@@ -253,6 +253,31 @@ async function createRestoreImageProcessors(): Promise<RestoreImageProcessors> {
 			await fs.mkdir(path.dirname(input.outputPath), { recursive: true });
 			await fs.writeFile(input.outputPath, await extractImage(input));
 		},
+		getImageSize: async (filePath: string): Promise<{ width: number; height: number } | null> => {
+			try {
+				const meta = await sharp(filePath).metadata();
+				return meta.width && meta.height ? { width: meta.width, height: meta.height } : null;
+			} catch {
+				return null;
+			}
+		},
+		padImage: async (sourcePath: string, outputPath: string, width: number, height: number): Promise<void> => {
+			// 将图集扩展到原始尺寸, 新增区域用透明像素填充
+			// sharp的extend是加到原始尺寸之上, 所以需要减去原始尺寸
+			const meta = await sharp(sourcePath).metadata();
+			const origW = meta.width ?? 0;
+			const origH = meta.height ?? 0;
+			await sharp(sourcePath)
+				.extend({
+					top: 0,
+					left: 0,
+					right: width - origW,
+					bottom: height - origH,
+					background: { r: 0, g: 0, b: 0, alpha: 0 },
+				})
+				.png()
+				.toFile(outputPath);
+		},
 	};
 }
 
@@ -344,7 +369,7 @@ async function cmdRestore(args: string[]): Promise<void> {
 	const outputDir = path.resolve(values.output);
 	const pkgFilter = values.packages ? values.packages.split(',').map((s) => s.trim()).filter(Boolean) : undefined;
 	const projectType = parseProjectType(values['project-type']);
-	const { cropImage, extractImage } = await createRestoreImageProcessors();
+	const { cropImage, extractImage, getImageSize, padImage } = await createRestoreImageProcessors();
 
 	console.log(`Restoring published FairyGUI project: ${releaseDir}`);
 	const result = await restore({
@@ -356,6 +381,8 @@ async function cmdRestore(args: string[]): Promise<void> {
 		projectType,
 		cropImage,
 		extractImage,
+		getImageSize,
+		padImage,
 	});
 
 	const packages = result.document.getRoot().listPackages();

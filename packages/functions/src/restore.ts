@@ -33,6 +33,8 @@ interface RestoreExecutionOptions {
 	projectType?: number;
 	cropImage?: RestoreImageCropper;
 	extractImage?: RestoreImageExtractor;
+	getImageSize?: (filePath: string) => Promise<{ width: number; height: number } | null>;
+	padImage?: (sourcePath: string, outputPath: string, width: number, height: number) => Promise<void>;
 }
 
 export interface RestoreResult {
@@ -57,6 +59,8 @@ export interface RestoreOptions {
 	projectType?: number;
 	cropImage?: RestoreImageCropper;
 	extractImage?: RestoreImageExtractor;
+	getImageSize?: (filePath: string) => Promise<{ width: number; height: number } | null>;
+	padImage?: (sourcePath: string, outputPath: string, width: number, height: number) => Promise<void>;
 }
 
 type RestorableResource = ReturnType<Package['listResources']>[number] & {
@@ -550,6 +554,8 @@ export async function restore(options: RestoreOptions): Promise<RestoreResult> {
 		projectType: options.projectType,
 		cropImage: options.cropImage,
 		extractImage: options.extractImage,
+		getImageSize: options.getImageSize,
+		padImage: options.padImage,
 	});
 }
 
@@ -989,6 +995,28 @@ class RestoreWorkflow {
 			if (!sourceAtlas) {
 				throw new Error(`Atlas image not found for package "${pkg.getName()}": ${this._sourceFileCandidates(pkg, atlas.getFile()).join(', ')}`);
 			}
+
+			// 计算图集需要的最小尺寸, 用于 pad 被裁剪过的图集
+			let maxAtlasX = 0;
+			let maxAtlasY = 0;
+			for (const sp of atlas.listSprites() as RestorableSprite[]) {
+				const right = sp.getRectX() + sp.getRectWidth();
+				const bottom = sp.getRectY() + sp.getRectHeight();
+				if (right > maxAtlasX) maxAtlasX = right;
+				if (bottom > maxAtlasY) maxAtlasY = bottom;
+			}
+			let paddedAtlasPath = sourceAtlas;
+			if (maxAtlasX > 0 && maxAtlasY > 0 && options.getImageSize && options.padImage) {
+				const actualSize = await options.getImageSize(sourceAtlas);
+				if (actualSize && (actualSize.width < maxAtlasX || actualSize.height < maxAtlasY)) {
+					const padW = Math.pow(2, Math.ceil(Math.log2(maxAtlasX)));
+					const padH = Math.pow(2, Math.ceil(Math.log2(maxAtlasY)));
+					console.warn('[restore] Atlas "' + atlas.getFile() + '" trimmed: ' + actualSize.width + 'x' + actualSize.height + ', padding to ' + padW + 'x' + padH);
+					paddedAtlasPath = sourceAtlas + '.padded.png';
+					await options.padImage(sourceAtlas, paddedAtlasPath, padW, padH);
+				}
+			}
+
 			for (const sprite of atlas.listSprites() as RestorableSprite[]) {
 				const image = findImageResource(pkg, sprite.getItemId());
 				if (!image) continue;
@@ -999,19 +1027,23 @@ class RestoreWorkflow {
 				const spriteWidth = sprite.getRotated() ? sprite.getRectHeight() : sprite.getRectWidth();
 				const spriteHeight = sprite.getRotated() ? sprite.getRectWidth() : sprite.getRectHeight();
 				await this._mkdirForFile(outputPath);
-				await options.cropImage({
-					sourcePath: sourceAtlas,
-					outputPath,
-					left: sprite.getRectX(),
-					top: sprite.getRectY(),
-					width: sprite.getRectWidth(),
-					height: sprite.getRectHeight(),
-					rotated: sprite.getRotated(),
-					offsetX: sprite.getOffsetX(),
-					offsetY: sprite.getOffsetY(),
-					expectedWidth: Math.max(imageWidth, sprite.getOriginalWidth(), spriteWidth),
-					expectedHeight: Math.max(imageHeight, sprite.getOriginalHeight(), spriteHeight),
-				});
+				try {
+					await options.cropImage({
+						sourcePath: paddedAtlasPath,
+						outputPath,
+						left: sprite.getRectX(),
+						top: sprite.getRectY(),
+						width: sprite.getRectWidth(),
+						height: sprite.getRectHeight(),
+						rotated: sprite.getRotated(),
+						offsetX: sprite.getOffsetX(),
+						offsetY: sprite.getOffsetY(),
+						expectedWidth: Math.max(imageWidth, sprite.getOriginalWidth(), spriteWidth),
+						expectedHeight: Math.max(imageHeight, sprite.getOriginalHeight(), spriteHeight),
+					});
+				} catch (cropError: any) {
+					console.warn('[restore] Skipping sprite "' + (image.getName?.() ?? image.getItemId()) + '" rect=' + sprite.getRectX() + ',' + sprite.getRectY() + ' ' + sprite.getRectWidth() + 'x' + sprite.getRectHeight() + ': ' + (cropError?.message ?? cropError));
+				}
 			}
 		}
 	}
