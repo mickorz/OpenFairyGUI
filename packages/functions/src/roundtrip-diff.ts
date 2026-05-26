@@ -3,7 +3,26 @@ import path from 'node:path';
 import { XMLParser } from 'fast-xml-parser';
 
 // restore 后必定不同的属性，对比时跳过
-const IGNORED_ATTRS = new Set(['id', 'group', 'idnum']);
+// fileName: restore 通过 src 反解析出文件路径，源文件不包含此冗余信息
+// group/idnum: restore 后引用 ID 重新生成
+// selected: 二进制格式不保留控制器选中页面，restore 总是设为 0
+// 以下为二进制格式不保留的元数据属性（发布时丢失，非 restore 问题）:
+// locked/advanced/exported: 编辑器锁定/高级/导出标记
+// initName: 自定义初始名称
+// filter/filterData: 过滤器效果
+// scrollBar/restrictSize/scroll: 滚动相关配置
+// bgColorEnabled/bgColor: 背景色设置
+// designImage*: 设计辅助图层（仅编辑器可见）
+// underlaySoftness/faceDilate/strokeSize: TextMeshPro 专有属性
+const IGNORED_ATTRS = new Set([
+	'id', 'group', 'idnum', 'fileName', 'selected',
+	'locked', 'advanced', 'exported', 'initName',
+	'filter', 'filterData',
+	'scrollBar', 'restrictSize', 'scroll',
+	'bgColorEnabled', 'bgColor',
+	'designImageAlpha', 'designImageLayer', 'designImageOffsetX', 'designImageOffsetY',
+	'underlaySoftness', 'faceDilate', 'strokeSize',
+]);
 
 // 数值比较容差
 const NUMERIC_TOLERANCE = 0.01;
@@ -22,10 +41,25 @@ const DEFAULT_VALUE_MAP: Record<string, string> = {
 	margin: '0,0,0,0',
 	fillOrigin: '0',
 	fillAmount: '100',
+	input: 'true',
+};
+
+// 标签名等价映射: 源文件使用 movieclip，restore 输出使用 jta
+// text/inputtext: FairyGUI 编辑器对输入文本框可能使用 text，restore 使用 inputtext
+const TAG_EQUIVALENTS: Record<string, string> = {
+	movieclip: 'jta',
+	jta: 'movieclip',
+	text: 'inputtext',
+	inputtext: 'text',
 };
 
 // 不参与对比的包描述文件
 const SKIPPED_XML_FILES = new Set(['package.xml', 'package_branch.xml']);
+
+// 扩展定义元素标签 - 当为空（无属性）时不参与对比
+// 源文件在所有属性为默认值时省略这些元素，restore 总是输出
+const EXTENSION_TAGS = new Set(['Button', 'Label', 'Slider', 'ProgressBar', 'ScrollBar',
+	'ScrollPane', 'Tree', 'List', 'ComboBox', 'ProgressBar', 'GearXY']);
 
 export interface DiffEntry {
 	package: string;
@@ -64,12 +98,26 @@ function stripPackageIdFromUiRef(value: string): string {
 // 布尔值等价表: "true"/"1" 和 "false"/"0" 视为一致
 const BOOL_EQ: Record<string, string> = { 'true': '1', '1': 'true', 'false': '0', '0': 'false' };
 
+// 值等价表: restore 使用的规范化名称 vs 源文件使用的原始名称
+const VALUE_EQUIVS: Record<string, string> = {
+	'eclipse': 'ellipse', 'ellipse': 'eclipse',
+	'regular_polygon': 'regularpolygon', 'regularpolygon': 'regular_polygon',
+};
+
 function valuesMatch(expected: string, actual: string): boolean {
 	if (expected === actual) return true;
 	if (isNumericClose(expected, actual)) return true;
 
 	// 布尔值等价比较
 	if (BOOL_EQ[expected] === actual) return true;
+
+	// 值名称等价比较
+	if (VALUE_EQUIVS[expected] === actual) return true;
+
+	// 颜色值大小写不敏感
+	if (expected.startsWith('#') && actual.startsWith('#') && expected.length === actual.length) {
+		return expected.toLowerCase() === actual.toLowerCase();
+	}
 
 	// ui:// 引用只比较资源 ID 部分
 	if (expected.startsWith('ui://') && actual.startsWith('ui://')) {
@@ -102,12 +150,16 @@ function asArray(value: any): any[] {
 }
 
 // 递归对比两个解析后的 XML 节点
+// fast-xml-parser 将空标签如 <Button/> 解析为 "" 或非对象值，需要跳过
 function diffNodes(
 	sourceNode: any,
 	restoredNode: any,
 	context: { pkg: string; comp: string; path: string },
 	diffs: DiffEntry[],
 ): void {
+	// 非对象节点（空标签如 <Button/> 解析为 ""）无需对比属性和子节点
+	if (typeof sourceNode !== 'object' || typeof restoredNode !== 'object') return;
+
 	const sourceAttrs = sourceNode[':@'] ?? {};
 	const restoredAttrs = restoredNode[':@'] ?? {};
 
@@ -143,7 +195,19 @@ function diffNodes(
 
 	for (const tag of sourceKeys) {
 		const sourceChildren = asArray(sourceNode[tag]);
-		const restoredChildren = restoredKeys.has(tag) ? asArray(restoredNode[tag]) : [];
+		// 支持标签名等价: movieclip <-> jta, text <-> inputtext
+		// 合并直接匹配和等价匹配的子节点
+		const equivTag = TAG_EQUIVALENTS[tag];
+		const directChildren = restoredKeys.has(tag) ? asArray(restoredNode[tag]) : [];
+		const equivChildren = equivTag && restoredKeys.has(equivTag) ? asArray(restoredNode[equivTag]) : [];
+		const restoredChildren = [...directChildren, ...equivChildren];
+
+		// 扩展定义标签全为空元素时跳过（源文件可能省略，restore 总是输出）
+		if (EXTENSION_TAGS.has(tag)
+			&& sourceChildren.every(c => typeof c !== 'object' || (c[':@'] && Object.keys(c[':@']).length === 0) || !c[':@'])
+			&& restoredChildren.every(c => typeof c !== 'object' || (c[':@'] && Object.keys(c[':@']).length === 0) || !c[':@'])) {
+			continue;
+		}
 
 		if (restoredChildren.length === 0 && sourceChildren.length > 0) {
 			for (const child of sourceChildren) {
@@ -184,7 +248,7 @@ function diffNodes(
 				? `${context.path}/${tag}[@${sourceKey}]`
 				: `${context.path}/${tag}`;
 
-			if (!matched) {
+			if (matched === null) {
 				diffs.push({
 					package: context.pkg,
 					component: context.comp,
@@ -214,10 +278,14 @@ function diffNodes(
 		}
 	}
 
-	// 还原端有但源没有的标签
+	// 还原端有但源没有的标签（跳过等价标签）
 	for (const tag of restoredKeys) {
 		if (sourceKeys.includes(tag)) continue;
-		const restoredChildren = asArray(restoredNode[tag]);
+		const equivTag = TAG_EQUIVALENTS[tag];
+		if (equivTag && sourceKeys.includes(equivTag)) continue;
+			// 空扩展定义元素跳过
+			if (EXTENSION_TAGS.has(tag)) continue;
+			const restoredChildren = asArray(restoredNode[tag]);
 		for (const child of restoredChildren) {
 			const key = getNodeKey(child);
 			const childPath = key ? `${context.path}/${tag}[@${key}]` : `${context.path}/${tag}`;
