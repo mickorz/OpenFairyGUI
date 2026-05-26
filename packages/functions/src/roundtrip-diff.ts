@@ -102,11 +102,29 @@ const BOOL_EQ: Record<string, string> = { 'true': '1', '1': 'true', 'false': '0'
 const VALUE_EQUIVS: Record<string, string> = {
 	'eclipse': 'ellipse', 'ellipse': 'eclipse',
 	'regular_polygon': 'regularpolygon', 'regularpolygon': 'regular_polygon',
+	'width': 'width-width', 'width-width': 'width',
+	'height': 'height-height', 'height-height': 'height',
 };
+
+function valueSegmentMatch(a: string, b: string): boolean {
+	if (a === b) return true;
+	if (BOOL_EQ[a] === b) return true;
+	if (VALUE_EQUIVS[a] === b) return true;
+	return false;
+}
 
 function valuesMatch(expected: string, actual: string): boolean {
 	if (expected === actual) return true;
 	if (isNumericClose(expected, actual)) return true;
+
+	// 逗号分隔值逐段比较（如 sidePair）
+	if (expected.includes(',') && actual.includes(',')) {
+		const eParts = expected.split(',');
+		const aParts = actual.split(',');
+		if (eParts.length === aParts.length) {
+			return eParts.every((e, i) => valueSegmentMatch(e, aParts[i]));
+		}
+	}
 
 	// 布尔值等价比较
 	if (BOOL_EQ[expected] === actual) return true;

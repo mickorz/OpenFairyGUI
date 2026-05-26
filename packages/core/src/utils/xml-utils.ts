@@ -106,6 +106,8 @@ const RELATION_TYPE_MAP: Record<string, number> = {
 	'middle-middle': 10,
 	'bottom-top': 11, 'bottom-middle': 12, 'bottom-bottom': 13,
 	'width-width': 14, 'height-height': 15,
+	// FairyGUI 编辑器使用的简写形式
+	'width': 14, 'height': 15,
 	'leftext-left': 16, 'leftext-right': 17,
 	'rightext-left': 18, 'rightext-right': 19,
 	'topext-top': 20, 'topext-bottom': 21,
