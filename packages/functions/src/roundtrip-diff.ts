@@ -117,12 +117,15 @@ function valuesMatch(expected: string, actual: string): boolean {
 	if (expected === actual) return true;
 	if (isNumericClose(expected, actual)) return true;
 
-	// 逗号分隔值逐段比较（如 sidePair）
-	if (expected.includes(',') && actual.includes(',')) {
-		const eParts = expected.split(',');
-		const aParts = actual.split(',');
+	// 逗号/管道分隔值逐段比较（如 sidePair, gear values）
+	if ((expected.includes(',') || expected.includes('|')) && (actual.includes(',') || actual.includes('|'))) {
+		const eParts = expected.split(/[|,]/);
+		const aParts = actual.split(/[|,]/);
 		if (eParts.length === aParts.length) {
-			return eParts.every((e, i) => valueSegmentMatch(e, aParts[i]));
+			return eParts.every((e, i) => {
+				const eTrim = e.trim(), aTrim = aParts[i].trim();
+				return eTrim === aTrim || isNumericClose(eTrim, aTrim) || valueSegmentMatch(eTrim, aTrim);
+			});
 		}
 	}
 
@@ -154,10 +157,11 @@ function createParser(): XMLParser {
 }
 
 // 获取节点的唯一标识（用于匹配源和还原的对应节点）
+// 优先用 name/id，其次用 target（用于过渡项匹配）
 function getNodeKey(node: any): string | null {
 	const attrs = node[':@'];
 	if (!attrs) return null;
-	return attrs.name || attrs.id || null;
+	return attrs.name || attrs.id || attrs.target || null;
 }
 
 // 将子节点统一为数组
