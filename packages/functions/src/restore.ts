@@ -36,6 +36,7 @@ interface RestoreExecutionOptions {
 	extractImage?: RestoreImageExtractor;
 	getImageSize?: (filePath: string) => Promise<{ width: number; height: number } | null>;
 	padImage?: (sourcePath: string, outputPath: string, width: number, height: number) => Promise<void>;
+	fontDir?: string;
 }
 
 export interface RestoreResult {
@@ -62,7 +63,23 @@ export interface RestoreOptions {
 	extractImage?: RestoreImageExtractor;
 	getImageSize?: (filePath: string) => Promise<{ width: number; height: number } | null>;
 	padImage?: (sourcePath: string, outputPath: string, width: number, height: number) => Promise<void>;
+	fontDir?: string;
 }
+
+export interface FontInfo {
+	packageName: string;
+	resourceId: string;
+	fontName: string;
+	fileName: string;
+	relativeOutputPath: string;
+}
+
+export interface ListMissingFontsOptions {
+	inputDir: string;
+	fs: RestoreFileSystem;
+	packages?: string[];
+}
+
 
 type RestorableResource = ReturnType<Package['listResources']>[number] & {
 	propertyType: string;
@@ -574,12 +591,66 @@ export async function restore(options: RestoreOptions): Promise<RestoreResult> {
 		extractImage: options.extractImage,
 		getImageSize: options.getImageSize,
 		padImage: options.padImage,
+		fontDir: options.fontDir,
 	});
+}
+
+export async function listMissingFonts(options: ListMissingFontsOptions): Promise<FontInfo[]> {
+	const sourceDir = trimTrailingSlashes(options.inputDir);
+	const packageFilter = options.packages?.length ? new Set(options.packages) : null;
+
+	const topEntries = await options.fs.readdir(sourceDir);
+	const subDirs: string[] = [];
+	for (const name of topEntries) {
+		const fullPath = options.fs.join(sourceDir, name);
+		if (!(await options.fs.isFile(fullPath))) {
+			subDirs.push(fullPath);
+		}
+	}
+	const searchDirs = [sourceDir, ...subDirs];
+
+	const binaryPaths: string[] = [];
+	for (const dir of searchDirs) {
+		const entries = await options.fs.readdir(dir).catch(() => [] as string[]);
+		const found = entries
+			.filter((name) => isPublishedBinaryFile(name))
+			.filter((name) => !packageFilter || packageFilter.has(inferPackageName(name)))
+			.map((name) => options.fs.join(dir, name));
+		for (const p of found) {
+			if (await options.fs.isFile(p)) binaryPaths.push(p);
+		}
+	}
+
+	if (binaryPaths.length === 0) return [];
+
+	const reader = new BinaryReader(options.fs);
+	const doc = await reader.readMany(binaryPaths);
+
+	const fonts: FontInfo[] = [];
+	for (const pkg of doc.getRoot().listPackages()) {
+		for (const resource of pkg.listResources()) {
+			if (resource.propertyType !== 'FontResource') continue;
+			const fileName = resourceFileName(resource as any);
+			if (!/\.ttf$/i.test(fileName)) continue;
+			const fontPath = resource.getPath?.() ?? '/';
+			const relDir = fontPath.replace(/^\/+/, '').replace(/\/+$/, '');
+			const relativeOutputPath = `assets/${pkg.getName()}${relDir ? '/' + relDir : ''}/${fileName}`;
+			fonts.push({
+				packageName: pkg.getName(),
+				resourceId: resource.getId(),
+				fontName: resource.getName?.() ?? fileName.replace(/\.ttf$/i, ''),
+				fileName,
+				relativeOutputPath,
+			});
+		}
+	}
+	return fonts;
 }
 
 class RestoreWorkflow {
 	private readonly _fs: RestoreFileSystem;
 	private _sourceDirs: string[] = [];
+	private _fontDir: string | undefined;
 
 	constructor(fs: RestoreFileSystem) {
 		this._fs = fs;
@@ -587,6 +658,7 @@ class RestoreWorkflow {
 
 	async restore(options: RestoreExecutionOptions): Promise<RestoreResult> {
 		this._sourceDirs = options.sourceDirs?.length ? options.sourceDirs : [options.sourceDir];
+		this._fontDir = options.fontDir;
 		const warnings: string[] = [];
 		const reader = new BinaryReader(this._fs);
 		const doc = await reader.readMany(options.binaryPaths);
@@ -1025,6 +1097,42 @@ class RestoreWorkflow {
 			await this._restoreAtlasImages(pkg, options);
 			await this._writeGeneratedResources(pkg, options, warnings);
 			await this._copyLooseResources(pkg, options, warnings);
+			await this._copyTtfFonts(pkg, options, warnings);
+		}
+	}
+
+
+	private async _copyTtfFonts(
+		pkg: Package,
+		options: RestoreExecutionOptions,
+		warnings: string[],
+	): Promise<void> {
+		if (!this._fontDir) return;
+
+		const fontDirEntries = await this._fs.readdir(this._fontDir).catch(() => [] as string[]);
+		const ttfFileMap = new Map<string, string>();
+		for (const entry of fontDirEntries) {
+			if (/\.ttf$/i.test(entry)) {
+				ttfFileMap.set(entry.toLowerCase(), entry);
+			}
+		}
+		if (ttfFileMap.size === 0) return;
+
+		for (const resource of pkg.listResources() as RestorableResource[]) {
+			if (resource.propertyType !== 'FontResource') continue;
+			const fileName = resourceFileName(resource);
+			if (!/\.ttf$/i.test(fileName)) continue;
+
+			const match = ttfFileMap.get(fileName.toLowerCase());
+			if (!match) {
+				warnings.push(`TTF font file not found in fontDir for package "${pkg.getName()}": ${fileName}`);
+				continue;
+			}
+
+			const sourcePath = this._fs.join(this._fontDir!, match);
+			const outputPath = this._resourceOutputPath(options.outputProjectPath, pkg, resource, fileName);
+			await this._mkdirForFile(outputPath);
+			await this._fs.writeFileRaw(outputPath, await this._fs.readFileRaw(sourcePath));
 		}
 	}
 

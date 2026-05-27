@@ -42,6 +42,7 @@ Restore options:
   --packages <a,b,c>     Only restore specific packages (comma-separated)
   --force                Overwrite a non-empty output directory
   --project-type <name|id>  Override restored project type; default is unity
+  --font-dir <dir>       Directory containing .ttf font files to copy into the restored project
 
 Options:
   --help, -h     Show this help
@@ -356,6 +357,7 @@ async function cmdRestore(args: string[]): Promise<void> {
 			packages: { type: 'string' },
 			force: { type: 'boolean' },
 			'project-type': { type: 'string' },
+			'font-dir': { type: 'string' },
 		},
 		allowPositionals: true,
 	});
@@ -383,6 +385,7 @@ async function cmdRestore(args: string[]): Promise<void> {
 		extractImage,
 		getImageSize,
 		padImage,
+			fontDir: values['font-dir'] ? path.resolve(values['font-dir']) : undefined,
 	});
 
 	const packages = result.document.getRoot().listPackages();

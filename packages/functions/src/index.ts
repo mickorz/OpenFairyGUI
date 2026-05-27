@@ -6,6 +6,7 @@ export { atlas, type AtlasOptions } from './atlas.js';
 export { publishCodeGeneration, AUTO_GENERATED_CODE_MARK, type PublishCodeGenerationOptions } from './codegen.js';
 export {
 	restore,
+	listMissingFonts,
 	type RestoreFileSystem,
 	type RestoreImageCropInput,
 	type RestoreImageCropper,
@@ -13,6 +14,8 @@ export {
 	type RestoreImageExtractor,
 	type RestoreOptions,
 	type RestoreResult,
+	type FontInfo,
+	type ListMissingFontsOptions,
 } from './restore.js';
 export {
 	publish,
