@@ -7,6 +7,7 @@ import {
 	publish,
 	resolvePublishOptions,
 	restore,
+	listMissingFonts,
 	type InspectReport,
 	type PublishOptions,
 	type RestoreFileSystem,
@@ -29,6 +30,7 @@ Commands:
   inspect <project-dir>                          Show project contents report
   publish <project-dir> --output <dir> [options]  Publish project to binary outputs and configured generated code
   restore <release-dir> --output <dir> [options]  Restore a FairyGUI project from published binaries
+  list-fonts <release-dir> [options]              List TTF fonts needed by published binaries
 
 Publish options:
   --output, -o <dir>     Output directory (required)
@@ -102,6 +104,9 @@ async function main(): Promise<void> {
 			break;
 		case 'restore':
 			await cmdRestore(rest);
+			case 'list-fonts':
+				await cmdListFonts(rest);
+				break;
 			break;
 		default:
 			console.error(`Unknown command: ${command}\n`);
@@ -347,6 +352,45 @@ function parseProjectType(value: string | undefined): number | undefined {
 		throw new Error(`Unknown project type: ${value}. Use a numeric id or one of: ${Object.keys(map).join(', ')}`);
 	}
 	return resolved;
+}
+
+async function cmdListFonts(args: string[]): Promise<void> {
+	const { values, positionals } = parseArgs({
+		args,
+		options: {
+			packages: { type: 'string' },
+		},
+		allowPositionals: true,
+	});
+
+	if (positionals.length === 0) {
+		console.error('Usage: ofgui list-fonts <release-dir> [--packages a,b,c]');
+		process.exit(1);
+	}
+
+	const releaseDir = path.resolve(positionals[0]);
+	const pkgFilter = values.packages ? values.packages.split(',').map((s: string) => s.trim()).filter(Boolean) : undefined;
+
+	const fonts = await listMissingFonts({
+		inputDir: releaseDir,
+		fs: createNodeRestoreFs(),
+		packages: pkgFilter,
+	});
+
+	if (fonts.length === 0) {
+		console.log('No TTF fonts found in published binaries.');
+		return;
+	}
+
+	console.log(`Found ${fonts.length} TTF font(s):
+`);
+	for (const font of fonts) {
+		console.log(`  Package:     ${font.packageName}`);
+		console.log(`  Font Name:   ${font.fontName}`);
+		console.log(`  File Name:   ${font.fileName}`);
+		console.log(`  Output Path: ${font.relativeOutputPath}`);
+		console.log();
+	}
 }
 
 async function cmdRestore(args: string[]): Promise<void> {
