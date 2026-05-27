@@ -42,6 +42,9 @@ const DEFAULT_VALUE_MAP: Record<string, string> = {
 	fillOrigin: '0',
 	fillAmount: '100',
 	input: 'true',
+	// tween=true 且 ease/duration 缺失时的默认缓动配置
+	ease: 'Quad.Out',
+	duration: '0.3',
 };
 
 // 标签名等价映射: 源文件使用 movieclip，restore 输出使用 jta
@@ -60,6 +63,32 @@ const SKIPPED_XML_FILES = new Set(['package.xml', 'package_branch.xml']);
 // 源文件在所有属性为默认值时省略这些元素，restore 总是输出
 const EXTENSION_TAGS = new Set(['Button', 'Label', 'Slider', 'ProgressBar', 'ScrollBar',
 	'ScrollPane', 'Tree', 'List', 'ComboBox', 'ProgressBar', 'GearXY']);
+
+// 二进制格式不保留的元素，对比时跳过
+// 二进制格式限制说明:
+// - 非 advanced 的 GGroup 纯粹是编辑器的视觉分组容器，不写入二进制
+// - displayList 内容全为非 advanced group 时，整个 displayList 为空（cosmetic）
+// - transition item 引用的目标元素不存在时，二进制正确丢弃该 item（stale ref）
+// - component-level relation 已在编码器中支持，此处仅为兜底
+const BINARY_FORMAT_SKIP_RULES = {
+	// 非 advanced 的 group（没有 layout/overflow 等运行时行为）
+	isPlainGroup: (node: any): boolean => {
+		if (typeof node !== 'object') return false;
+		const attrs = node[':@'];
+		if (!attrs) return true; // 无属性 = 空元素 = 纯分组
+		return !attrs.advanced;
+	},
+	// 空的 displayList（内容全部被过滤）
+	isEmptyDisplayList: (children: any[]): boolean => {
+		return children.every(c => {
+			if (typeof c !== 'object') return true;
+			const keys = Object.keys(c).filter(k => k !== ':@');
+			// 检查是否是 group 标签且为非 advanced
+			return keys.length === 1 && keys[0] === 'group'
+				&& asArray(c.group).every((g: any) => BINARY_FORMAT_SKIP_RULES.isPlainGroup(g));
+		});
+	},
+};
 
 export interface DiffEntry {
 	package: string;
@@ -232,7 +261,13 @@ function diffNodes(
 		}
 
 		if (restoredChildren.length === 0 && sourceChildren.length > 0) {
+			// 二进制格式限制: 空 displayList 还原端省略（cosmetic）
+			if (tag === 'displayList' && BINARY_FORMAT_SKIP_RULES.isEmptyDisplayList(sourceChildren)) {
+				continue;
+			}
 			for (const child of sourceChildren) {
+				// 二进制格式限制: 非 advanced 的 group 不写入二进制
+				if (tag === 'group' && BINARY_FORMAT_SKIP_RULES.isPlainGroup(child)) continue;
 				const key = getNodeKey(child);
 				const childPath = key ? `${context.path}/${tag}[@${key}]` : `${context.path}/${tag}`;
 				diffs.push({
@@ -346,7 +381,46 @@ function diffXmlContent(
 
 	const diffs: DiffEntry[] = [];
 	diffNodes(sourceRoot, restoredRoot, { ...context, path: context.comp }, diffs);
-	return diffs;
+
+	// 过滤: transition item 引用的目标元素在源文件中不存在（stale ref）
+	// 源文件可能有残留的 transition item 引用了已被删除的元素，还原正确丢弃了它们
+	const displayListIds = new Set<string>();
+	collectDisplayListIds(sourceRoot, displayListIds);
+	return diffs.filter(d => {
+		if (d.type !== 'missing_element') return true;
+		// transition 下的 item，检查 target 对应的元素是否存在
+		const transItemMatch = d.path.match(/\/transition\[@(\w+)\]\/item\[@(\w+)\]/);
+		if (transItemMatch) {
+			const targetId = transItemMatch[2];
+			// item 的 key 是 target，如果 target 不在 displayList 中就是 stale ref
+			return displayListIds.has(targetId);
+		}
+		return true;
+	});
+}
+
+// 从解析后的 XML 节点中收集 displayList 下所有元素的 id
+function collectDisplayListIds(node: any, ids: Set<string>): void {
+	if (typeof node !== 'object' || !node) return;
+	const dl = node.displayList;
+	if (dl) {
+		const children = asArray(dl);
+		for (const child of children) {
+			if (typeof child !== 'object') continue;
+			const attrs = child[':@'];
+			if (attrs?.id) ids.add(attrs.id);
+		}
+	}
+	// 递归进入 displayList 中的子组件
+	for (const key of Object.keys(node)) {
+		if (key === ':@' || key === 'displayList') continue;
+		const val = node[key];
+		if (Array.isArray(val)) {
+			for (const item of val) collectDisplayListIds(item, ids);
+		} else if (typeof val === 'object' && val) {
+			collectDisplayListIds(val, ids);
+		}
+	}
 }
 
 // 递归收集目录下所有 .xml 文件

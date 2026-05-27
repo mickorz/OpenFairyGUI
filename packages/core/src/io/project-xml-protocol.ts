@@ -760,6 +760,7 @@ const COMPONENT_ROOT_NODE = defineNode(
 		{
 			controller: CONTROLLER_NODE,
 			transition: TRANSITION_NODE,
+			relation: RELATION_NODE,
 		},
 		WITH_ROOT_EXTENSION_CHILDREN,
 	),

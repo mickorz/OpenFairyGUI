@@ -8,6 +8,9 @@ import type { Transition } from '../properties/transition.js';
 import type { Gear } from '../properties/gear.js';
 import { ControllerActionType, GearType, TransitionActionType } from '../constants.js';
 import type { FileSystem } from './project-reader.js';
+
+// FairyGUI 编辑器（Windows）要求 CRLF 换行
+const NL = '\r\n';
 import { PROJECT_XML_PROTOCOL, writeXmlAttr, type XmlNodeProtocol } from './project-xml-protocol.js';
 
 const builder = new XMLBuilder({
@@ -217,7 +220,7 @@ function renderXmlNode(tagName: string, node: unknown, indent: string): string {
 		return `${indent}<${tagName}/>`;
 	}
 	if (Array.isArray(node)) {
-		return node.map((item) => renderXmlNode(tagName, item, indent)).join('\n');
+		return node.map((item) => renderXmlNode(tagName, item, indent)).join(NL);
 	}
 	if (typeof node !== 'object') {
 		return `${indent}<${tagName}>${renderXmlText(node)}</${tagName}>`;
@@ -244,7 +247,7 @@ function renderXmlNode(tagName: string, node: unknown, indent: string): string {
 		}
 	}
 
-	return `${indent}<${tagName}${renderXmlAttrs(attrs)}>\n${childLines.join('\n')}\n${indent}</${tagName}>`;
+	return `${indent}<${tagName}${renderXmlAttrs(attrs)}>${NL}${childLines.join(NL)}${NL}${indent}</${tagName}>`;
 }
 
 function compareResourceIdSequence(a: string, b: string): number {
@@ -792,8 +795,7 @@ export class ProjectWriter {
 		const basePath = fs.dirname(projectPath);
 
 		// 1. Write .fairy file
-		const fairyXml = `<?xml version="1.0" encoding="utf-8"?>\n`
-			+ `<projectDescription id="${root.getProjectId()}" type="${this._projectTypeName(root.getProjectType())}" version="${root.getVersion() || '3.0'}"/>\n`;
+		const fairyXml = `<?xml version="1.0" encoding="utf-8"?>${NL}<projectDescription id="${root.getProjectId()}" type="${this._projectTypeName(root.getProjectType())}" version="${root.getVersion() || '3.0'}"/>`;
 		await fs.writeFile(projectPath, fairyXml);
 
 		// 2. Write settings
@@ -941,7 +943,7 @@ export class ProjectWriter {
 		}
 		lines.push('  </publish>');
 		lines.push('</packageDescription>');
-		return `${lines.join('\n')}\n`;
+			return `${lines.join(NL)}${NL}`;
 	}
 
 	private _renderBranchDescriptionXml(resources: PackageResource[]): string {
@@ -953,7 +955,7 @@ export class ProjectWriter {
 			'  </resources>',
 			'</branchDescription>',
 		];
-		return `${lines.join('\n')}\n`;
+			return `${lines.join(NL)}${NL}`;
 	}
 
 	private _renderPackageResourceLines(resources: PackageResource[], indent: string): string[] {
@@ -1208,6 +1210,29 @@ export class ProjectWriter {
 			compNode.displayList = this._serializeDisplayList(children);
 		}
 
+		// Component-level relations
+		const compRelations = comp.getRelations();
+		if (compRelations.length > 0) {
+			const relationChildName = getProtocolChildName(PROJECT_XML_PROTOCOL.componentRoot, 'relation');
+			if (relationChildName) {
+				const byTarget = new Map<string, string[]>();
+				for (const rel of compRelations) {
+					const name = RELATION_TYPE_NAME[rel.type] ?? '';
+					if (!name) continue;
+					const pair = rel.usePercent ? name + '%' : name;
+					if (!byTarget.has(rel.target)) byTarget.set(rel.target, []);
+					byTarget.get(rel.target)!.push(pair);
+				}
+				const relElements = Array.from(byTarget.entries()).map(([target, pairs]) => {
+					const relationAttrs: Record<string, unknown> = {};
+					writeXmlAttr(relationAttrs, PROJECT_XML_PROTOCOL.relation.attrs.target, target);
+					writeXmlAttr(relationAttrs, PROJECT_XML_PROTOCOL.relation.attrs.sidePair, pairs.join(','));
+					return relationAttrs;
+				});
+				if (relElements.length > 0) compNode[relationChildName] = relElements;
+			}
+		}
+
 		// Transitions
 		const transitions = comp.listTransitions();
 		if (transitions.length > 0) {
@@ -1267,7 +1292,7 @@ export class ProjectWriter {
 			component: compNode,
 		};
 
-		await fs.writeFile(fs.join(fileDir, name), builder.build(xmlObj) as string);
+		await fs.writeFile(fs.join(fileDir, name), (builder.build(xmlObj) as string).replace(/(?<!\r)\n/g, '\r\n'));
 	}
 
 	private _serializeController(ctrl: Controller): Record<string, unknown> {
@@ -1318,7 +1343,7 @@ export class ProjectWriter {
 			assertDisplayListVariantAllowed(propertyType, tag, child.getName() || child.getId() || propertyType);
 			lines.push(renderXmlNode(tag, this._serializeChild(child), '    '));
 		}
-		return `\n${lines.join('\n')}\n  `;
+			return `${NL}${lines.join(NL)}${NL}  `;
 	}
 
 	private _serializeChild(obj: GObject): Record<string, unknown> {
@@ -1887,7 +1912,7 @@ export class ProjectWriter {
 			const hasDefaultTweenConfig = gear.getEaseType() === 5 && Math.abs(gear.getTweenDuration() - 0.3) < 0.000001;
 			if (!hasDefaultTweenConfig) {
 				writeXmlAttr(attrs, PROJECT_XML_PROTOCOL.gear.attrs.ease, stringifyEaseType(gear.getEaseType()));
-				writeXmlAttr(attrs, PROJECT_XML_PROTOCOL.gear.attrs.duration, String(gear.getTweenDuration()));
+				writeXmlAttr(attrs, PROJECT_XML_PROTOCOL.gear.attrs.duration, formatTrimmedFixed(gear.getTweenDuration(), 6));
 			}
 		}
 		if (gear.getPositionsInPercent?.()) writeXmlAttr(attrs, PROJECT_XML_PROTOCOL.gear.attrs.positionsInPercent, 'true');

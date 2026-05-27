@@ -1324,8 +1324,8 @@ function _writeGearStatus(buf: WriteBuffer, gearType: number, valueStr: string, 
 			buf.writeFloat32(parseFloat(parts[3]) || 1);
 			break;
 		case 3: // GearLook: alpha,rotation,grayed,touchable
-			buf.writeFloat32(parseFloat(parts[0]) || 1);
-			buf.writeFloat32(parseFloat(parts[1]) || 0);
+			buf.writeFloat32(Number.isNaN(parseFloat(parts[0])) ? 1 : parseFloat(parts[0]));
+			buf.writeFloat32(Number.isNaN(parseFloat(parts[1])) ? 0 : parseFloat(parts[1]));
 			buf.writeBool(parts[2] === 'true' || parts[2] === '1');
 			buf.writeBool(parts.length < 4 || parts[3] === 'true' || parts[3] === '1');
 			break;

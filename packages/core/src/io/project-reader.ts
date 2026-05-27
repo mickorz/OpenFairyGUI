@@ -1450,6 +1450,21 @@ export class ProjectReader {
 			}
 		}
 
+		// Component-level relations
+		const relationChildName = getProtocolChildName(PROJECT_XML_PROTOCOL.componentRoot, 'relation');
+		const compRelations = relationChildName ? ensureArray(compNode[relationChildName]) : [];
+		for (const relDef of compRelations) {
+			const parsedRelation = getXmlNode<RelationXmlNode>(relDef);
+			if (!parsedRelation) continue;
+			const sidePair = readXmlAttr<string>(parsedRelation, PROJECT_XML_PROTOCOL.relation.attrs.sidePair) || '';
+			const sidePairs = parseSidePair(sidePair);
+			for (const sp of sidePairs) {
+				const target = readXmlAttr<string>(parsedRelation, PROJECT_XML_PROTOCOL.relation.attrs.target) || '';
+				const rel: RelationDef = { target, type: sp.type, usePercent: sp.usePercent };
+				comp.addRelation(rel);
+			}
+		}
+
 		// Transitions
 		const transitions = ensureArray(compNode.transition);
 		for (const transDef of transitions) {

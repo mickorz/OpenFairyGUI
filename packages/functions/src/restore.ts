@@ -29,6 +29,7 @@ export type RestoreImageExtractor = (input: RestoreImageExtractInput) => Promise
 interface RestoreExecutionOptions {
 	binaryPaths: string[];
 	sourceDir: string;
+	sourceDirs: string[];
 	outputProjectPath: string;
 	projectType?: number;
 	cropImage?: RestoreImageCropper;
@@ -531,16 +532,31 @@ export async function restore(options: RestoreOptions): Promise<RestoreResult> {
 	await prepareRestoreOutputDir(sourceDir, outputDir, outputProjectPath, options.fs, options.force === true, outputIsProjectFile);
 
 	const packageFilter = options.packages?.length ? new Set(options.packages) : null;
-	const candidateBinaryPaths = (await options.fs.readdir(sourceDir))
-		.filter((name) => isPublishedBinaryFile(name))
-		.filter((name) => !packageFilter || packageFilter.has(inferPackageName(name)))
-		.map((name) => options.fs.join(sourceDir, name))
-		.sort((left, right) => left.localeCompare(right));
-	const binaryPaths = (await Promise.all(
-		candidateBinaryPaths.map(async (filePath) => (await options.fs.isFile(filePath)) ? filePath : null),
-	))
-		.filter((filePath): filePath is string => !!filePath)
-		.sort((left, right) => left.localeCompare(right));
+
+	// 收集所有搜索目录：顶层 + 一级子目录（支持 FairyGUI 编辑器输出的每包一目录结构）
+	const topEntries = await options.fs.readdir(sourceDir);
+	const subDirs: string[] = [];
+	for (const name of topEntries) {
+		const fullPath = options.fs.join(sourceDir, name);
+		if (!(await options.fs.isFile(fullPath))) {
+			subDirs.push(fullPath);
+		}
+	}
+	const searchDirs = [sourceDir, ...subDirs];
+
+	// 在所有搜索目录中查找二进制文件
+	const binaryPaths: string[] = [];
+	for (const dir of searchDirs) {
+		const entries = await options.fs.readdir(dir).catch(() => [] as string[]);
+		const found = entries
+			.filter((name) => isPublishedBinaryFile(name))
+			.filter((name) => !packageFilter || packageFilter.has(inferPackageName(name)))
+			.map((name) => options.fs.join(dir, name));
+		for (const p of found) {
+			if (await options.fs.isFile(p)) binaryPaths.push(p);
+		}
+	}
+	binaryPaths.sort((left, right) => left.localeCompare(right));
 
 	if (binaryPaths.length === 0) {
 		throw new Error(`No FairyGUI published binary files found in ${sourceDir}.`);
@@ -550,6 +566,7 @@ export async function restore(options: RestoreOptions): Promise<RestoreResult> {
 	return restorer.restore({
 		binaryPaths,
 		sourceDir,
+		sourceDirs: searchDirs,
 		outputProjectPath,
 		projectType: options.projectType,
 		cropImage: options.cropImage,
@@ -561,12 +578,14 @@ export async function restore(options: RestoreOptions): Promise<RestoreResult> {
 
 class RestoreWorkflow {
 	private readonly _fs: RestoreFileSystem;
+	private _sourceDirs: string[] = [];
 
 	constructor(fs: RestoreFileSystem) {
 		this._fs = fs;
 	}
 
 	async restore(options: RestoreExecutionOptions): Promise<RestoreResult> {
+		this._sourceDirs = options.sourceDirs?.length ? options.sourceDirs : [options.sourceDir];
 		const warnings: string[] = [];
 		const reader = new BinaryReader(this._fs);
 		const doc = await reader.readMany(options.binaryPaths);
@@ -1280,9 +1299,13 @@ class RestoreWorkflow {
 	}
 
 	private async _resolveSourceFile(sourceDir: string, candidates: string[]): Promise<string | null> {
-		for (const candidate of candidates) {
-			const sourcePath = this._fs.join(sourceDir, candidate);
-			if (await this._fs.isFile(sourcePath)) return sourcePath;
+		// 搜索传入的 sourceDir 以及所有已知的 sourceDirs（包括子目录）
+		const allDirs = [sourceDir, ...this._sourceDirs.filter(d => d !== sourceDir)];
+		for (const dir of allDirs) {
+			for (const candidate of candidates) {
+				const sourcePath = this._fs.join(dir, candidate);
+				if (await this._fs.isFile(sourcePath)) return sourcePath;
+			}
 		}
 		return null;
 	}
