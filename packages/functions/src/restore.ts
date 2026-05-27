@@ -337,6 +337,7 @@ function imageFileName(resource: RestorableResource): string {
 	return fileName;
 }
 
+
 function findImageResource(pkg: Package, itemId: string): RestorableResource | null {
 	return (pkg.listResources() as RestorableResource[]).find((resource) => {
 		return resource.propertyType === 'ImageResource' && resource.getId?.() === itemId;
@@ -983,14 +984,34 @@ class RestoreWorkflow {
 			for (const resource of resources) {
 				if (resource.propertyType !== 'FontResource') continue;
 				if (resource.getTextureId?.()) continue;
-				if (resource.getTtf?.() !== true) continue;
-				const expectedFileName = syntheticFontTextureFileName(resource).toLowerCase();
-				const texture = resources.find((candidate) => {
-					return candidate.propertyType === 'ImageResource'
-						&& sameVirtualPath(resource, candidate)
-						&& fileBaseName(resourceFileName(candidate)).toLowerCase() === expectedFileName;
-				});
-				if (texture?.getId?.()) resource.setTextureId?.(texture.getId());
+
+				// 优先检查图集精灵别名 - 发布器会为有纹理的字体创建一个与 font ID 同名的精灵
+				let found = false;
+				for (const pkg2 of doc.getRoot().listPackages()) {
+					for (const atlas of pkg2.listAtlases()) {
+						for (const sprite of atlas.listSprites() as RestorableSprite[]) {
+							if (sprite.getItemId() === resource.getId?.()) {
+								resource.setTextureId?.(resource.getId?.() ?? '');
+								found = true;
+								break;
+							}
+						}
+						if (found) break;
+					}
+					if (found) break;
+				}
+				if (found) continue;
+
+				// 回退: TTF 字体查找合成纹理图片资源
+				if (resource.getTtf?.() === true) {
+					const expectedFileName = syntheticFontTextureFileName(resource).toLowerCase();
+					const texture = resources.find((candidate) => {
+						return candidate.propertyType === 'ImageResource'
+							&& sameVirtualPath(resource, candidate)
+							&& fileBaseName(resourceFileName(candidate)).toLowerCase() === expectedFileName;
+					});
+					if (texture?.getId?.()) resource.setTextureId?.(texture.getId());
+				}
 			}
 		}
 	}
@@ -1039,7 +1060,30 @@ class RestoreWorkflow {
 			for (const sprite of atlas.listSprites() as RestorableSprite[]) {
 				const image = findImageResource(pkg, sprite.getItemId());
 				if (!image) continue;
-				if (sprite.getRectWidth() <= 0 || sprite.getRectHeight() <= 0) continue;
+				if (sprite.getRectWidth() <= 0 || sprite.getRectHeight() <= 0) {
+						// sprite 在图集中尺寸为0（被发布器裁剪/合并），生成占位图片
+						const origW = sprite.getOriginalWidth?.() ?? image.getWidth?.() ?? 0;
+						const origH = sprite.getOriginalHeight?.() ?? image.getHeight?.() ?? 0;
+						if (origW > 0 && origH > 0 && options.extractImage) {
+							const placeholderPath = this._resourceOutputPath(options.outputProjectPath, pkg, image, imageFileName(image));
+							await this._mkdirForFile(placeholderPath);
+							try {
+								const data = await options.extractImage({
+									sourcePath: paddedAtlasPath,
+									outputPath: placeholderPath,
+									left: 0, top: 0, width: 0, height: 0,
+									rotated: false,
+									offsetX: 0, offsetY: 0,
+									expectedWidth: origW,
+									expectedHeight: origH,
+								});
+								await this._fs.writeFileRaw(placeholderPath, data);
+							} catch (placeholderError: any) {
+								console.warn('[restore] Failed to create placeholder for "' + (image.getName?.() ?? image.getItemId()) + '": ' + (placeholderError?.message ?? placeholderError));
+							}
+						}
+						continue;
+					}
 				const outputPath = this._resourceOutputPath(options.outputProjectPath, pkg, image, imageFileName(image));
 				const imageWidth = image.getWidth?.() ?? 0;
 				const imageHeight = image.getHeight?.() ?? 0;
@@ -1216,6 +1260,8 @@ class RestoreWorkflow {
 			if (resource.propertyType !== 'ImageResource' || !isSyntheticFontGlyphResource(resource)) continue;
 			const fileName = resourceFileName(resource) || defaultSyntheticFontGlyphFileName(resource.getId?.() ?? 'glyph');
 			const outputPath = this._resourceOutputPath(outputProjectPath, pkg, resource, fileName);
+			// skip if already extracted from atlas by _restoreAtlasImages
+			if (await this._fs.exists(outputPath)) continue;
 			await this._mkdirForFile(outputPath);
 			await this._fs.writeFileRaw(outputPath, TRANSPARENT_PNG_1X1);
 		}

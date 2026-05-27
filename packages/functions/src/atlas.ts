@@ -540,7 +540,7 @@ export function atlas(_options: AtlasOptions = {}): Transform {
 				} else if (isFontResource(res)) {
 					const resId = res.getId();
 					if (!res.getExported() && referencedIds.size > 0 && !referencedIds.has(resId)) continue;
-					await _collectFontTexture(doc, res, pkg, options);
+					await _collectFontTexture(doc, res, pkg, inputs, encoder, options, doTrim, logger, orderedAllResources);
 				}
 			}
 
@@ -1416,16 +1416,26 @@ async function _collectFontTexture(
 	doc: Document,
 	fontRes: FontResource,
 	pkg: Package,
+	inputs: InputItem[],
+	encoder: AtlasEncoder | undefined,
 	options: AtlasOptions,
+	doTrim: boolean,
+	logger: ILogger,
+	allResources: PackageResource[],
 ): Promise<void> {
 	const textureId = fontRes.getTextureId?.() ?? '';
 
 	if (textureId) {
-		// Record font→texture mapping so we can add a duplicate sprite entry
-		// after atlas packing. The editor stores both the image ID (jb800) and
-		// the font ID (wa8u2r) as separate sprites at the same atlas position.
+		// Record font->texture mapping
 		const fontId = fontRes.getId();
 		fontRes.setExtras({ ...fontRes.getExtras(), _fontSpriteAlias: { fontId, textureId } });
+
+		// Ensure the font texture image is collected into inputs.
+		// Font textures may not be in the component reference list but still need packing.
+		const texImage = allResources.find((r) => isImageResource(r) && r.getId() === textureId);
+		if (texImage) {
+			await _collectImage(texImage as ImageResource, pkg, inputs, encoder, options, doTrim, logger);
+		}
 	}
 
 	// Parse .fnt file for glyph data (needed for binary encoding)
@@ -1466,6 +1476,20 @@ async function _collectFontTexture(
 					.setLineHeight(fntParsed.lineHeight)
 					.setChannel(item.channel);
 				fontRes.addGlyph(glyph);
+			}
+			// Collect glyph images that haven't been packed yet.
+			// Bitmap fonts without a textureId reference individual glyph images by ID.
+			// Use pkg.listResources() (not allResources) because glyph images may
+			// not be in publishedResourceIds if they're only referenced via .fnt files.
+			const pkgResources = pkg.listResources();
+			for (const item of fntParsed.glyphs) {
+				if (!item.img) continue;
+				const alreadyPacked = inputs.some((inp) => inp.id === item.img);
+				if (alreadyPacked) continue;
+				const glyphImage = pkgResources.find((r) => isImageResource(r) && r.getId() === item.img);
+				if (glyphImage) {
+					await _collectImage(glyphImage as ImageResource, pkg, inputs, encoder, options, doTrim, logger);
+				}
 			}
 		} catch { /* .fnt not found */ }
 	}

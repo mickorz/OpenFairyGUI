@@ -549,3 +549,150 @@ export async function diffXmlProjects(sourceDir: string, restoredDir: string): P
 		extraInRestored,
 	};
 }
+
+// ========== 图片对比 ==========
+
+const IMAGE_EXTENSIONS = new Set(['.png', '.jpg', '.jpeg', '.webp']);
+
+export interface ImageDiffEntry {
+	package: string;
+	file: string;
+	type: 'missing_image' | 'size_mismatch';
+	expectedWidth?: number;
+	expectedHeight?: number;
+	actualWidth?: number;
+	actualHeight?: number;
+}
+
+export interface ImageDiffReport {
+	summary: {
+		totalImages: number;
+		matchingImages: number;
+		missingImages: number;
+		sizeMismatches: number;
+	};
+	diffs: ImageDiffEntry[];
+}
+
+export type ImageSizeReader = (filePath: string) => Promise<{ width: number; height: number } | null>;
+
+async function collectImageFiles(
+	dir: string,
+	base = '',
+): Promise<Array<{ fullPath: string; relative: string }>> {
+	const results: Array<{ fullPath: string; relative: string }> = [];
+	let entries: import('node:fs').Dirent[];
+	try {
+		entries = await fs.readdir(dir, { withFileTypes: true });
+	} catch {
+		return results;
+	}
+	for (const entry of entries) {
+		const fullPath = path.join(dir, entry.name);
+		const relative = base ? `${base}/${entry.name}` : entry.name;
+		if (entry.isDirectory()) {
+			const sub = await collectImageFiles(fullPath, relative);
+			results.push(...sub);
+		} else if (entry.isFile() && IMAGE_EXTENSIONS.has(path.extname(entry.name).toLowerCase())) {
+			results.push({ fullPath, relative });
+		}
+	}
+	return results;
+}
+
+function candidateRestoredPaths(sourceRelative: string): string[] {
+	const candidates = [sourceRelative];
+	const dotIdx = sourceRelative.lastIndexOf('.');
+	if (dotIdx >= 0) {
+		const ext = sourceRelative.substring(dotIdx).toLowerCase();
+		const base = sourceRelative.substring(0, dotIdx);
+		if (ext !== '.png') {
+			candidates.push(base + '.png');
+		}
+		if (ext === '.jpg' || ext === '.jpeg') {
+			const innerDot = base.lastIndexOf('.');
+			if (innerDot >= 0) {
+				const innerExt = base.substring(innerDot).toLowerCase();
+				if (IMAGE_EXTENSIONS.has(innerExt)) {
+					candidates.push(base);
+				}
+			}
+		}
+	}
+	return candidates;
+}
+
+export async function diffImageProjects(
+	sourceDir: string,
+	restoredDir: string,
+	getImageSize: ImageSizeReader,
+): Promise<ImageDiffReport> {
+	const diffs: ImageDiffEntry[] = [];
+
+	const sourcePackages = await fs.readdir(sourceDir, { withFileTypes: true });
+	const restoredPackages = new Map<string, string>();
+	for (const entry of await fs.readdir(restoredDir, { withFileTypes: true })) {
+		if (entry.isDirectory()) restoredPackages.set(entry.name, path.join(restoredDir, entry.name));
+	}
+
+	let totalImages = 0;
+	let matchingImages = 0;
+	let missingImages = 0;
+	let sizeMismatches = 0;
+
+	for (const srcEntry of sourcePackages) {
+		if (!srcEntry.isDirectory()) continue;
+		const pkgName = srcEntry.name;
+		const srcPkgDir = path.join(sourceDir, pkgName);
+		const restoredPkgDir = restoredPackages.get(pkgName);
+		const srcImages = await collectImageFiles(srcPkgDir);
+
+		for (const img of srcImages) {
+			totalImages++;
+			const relativePath = `${pkgName}/${img.relative}`;
+
+			if (!restoredPkgDir) {
+				diffs.push({ package: pkgName, file: img.relative, type: 'missing_image' });
+				missingImages++;
+				continue;
+			}
+
+			let restoredSize: { width: number; height: number } | null = null;
+			for (const candidate of candidateRestoredPaths(img.relative)) {
+				const tryPath = path.join(restoredPkgDir, candidate);
+				try {
+					const size = await getImageSize(tryPath);
+					if (size) { restoredSize = size; break; }
+				} catch { /* try next candidate */ }
+			}
+			if (!restoredSize) {
+				diffs.push({ package: pkgName, file: img.relative, type: 'missing_image' });
+				missingImages++;
+				continue;
+			}
+
+			const srcSize = await getImageSize(img.fullPath);
+			if (!srcSize) continue;
+
+			if (srcSize.width !== restoredSize.width || srcSize.height !== restoredSize.height) {
+				diffs.push({
+					package: pkgName,
+					file: img.relative,
+					type: 'size_mismatch',
+					expectedWidth: srcSize.width,
+					expectedHeight: srcSize.height,
+					actualWidth: restoredSize.width,
+					actualHeight: restoredSize.height,
+				});
+				sizeMismatches++;
+			} else {
+				matchingImages++;
+			}
+		}
+	}
+
+	return {
+		summary: { totalImages, matchingImages, missingImages, sizeMismatches },
+		diffs,
+	};
+}

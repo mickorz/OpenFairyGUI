@@ -4,7 +4,7 @@ import path from 'node:path';
 import sharp from 'sharp';
 import { NodeIO } from '@openfairygui/core';
 import { publish, restore, type PublishFileSystem, type RestoreFileSystem, type RestoreImageCropInput, type RestoreImageExtractInput } from '../src/index.js';
-import { diffXmlProjects } from '../src/roundtrip-diff.js';
+import { diffXmlProjects, diffImageProjects } from '../src/roundtrip-diff.js';
 
 const ROOT_DIR = path.resolve(import.meta.dirname, '../../..');
 const TEST_PROJECT_DIR = path.join(ROOT_DIR, 'TestProject');
@@ -14,6 +14,20 @@ const CRACK_DIR = path.join(TEST_PROJECT_DIR, 'CrackFgui');
 const REPORT_PATH = path.join(TEST_PROJECT_DIR, 'roundtrip-report.json');
 
 async function extractImage(input: RestoreImageExtractInput): Promise<Uint8Array> {
+	// 零尺寸 sprite（被发布器裁剪/合并），生成占位空白图片
+	if (input.width <= 0 || input.height <= 0) {
+		if (input.expectedWidth > 0 && input.expectedHeight > 0) {
+			return sharp({
+				create: {
+					width: input.expectedWidth,
+					height: input.expectedHeight,
+					channels: 4,
+					background: { r: 0, g: 0, b: 0, alpha: 0 },
+				},
+			}).png().toBuffer();
+		}
+		throw new Error('Cannot extract zero-size sprite with no expected dimensions');
+	}
 	let pipeline = sharp(input.sourcePath).extract({
 		left: input.left,
 		top: input.top,
@@ -171,14 +185,37 @@ test.serial('roundtrip: publish restore diff generates report', async (t) => {
 		},
 	});
 
-	// Step 3: diff SourceFgui/assets vs CrackFgui/assets
+	// Step 3: diff images (source vs restored)
+	const imageReport = await diffImageProjects(
+		path.join(SOURCE_DIR, 'assets'),
+		path.join(CRACK_DIR, 'assets'),
+		async (p) => {
+			const meta = await sharp(p).metadata();
+			return meta.width && meta.height ? { width: meta.width, height: meta.height } : null;
+		},
+	);
+	console.log('--- Image Diff Report ---');
+	console.log(`Total images:    ${imageReport.summary.totalImages}`);
+	console.log(`Matching:        ${imageReport.summary.matchingImages}`);
+	console.log(`Missing:         ${imageReport.summary.missingImages}`);
+	console.log(`Size mismatches: ${imageReport.summary.sizeMismatches}`);
+	for (const d of imageReport.diffs) {
+		if (d.type === 'missing_image') {
+			console.log(`  [MISSING] ${d.package}/${d.file}`);
+		} else {
+			console.log(`  [SIZE] ${d.package}/${d.file}: expected ${d.expectedWidth}x${d.expectedHeight}, got ${d.actualWidth}x${d.actualHeight}`);
+		}
+	}
+
+	// Step 4: diff SourceFgui/assets vs CrackFgui/assets XML
 	const report = await diffXmlProjects(
 		path.join(SOURCE_DIR, 'assets'),
 		path.join(CRACK_DIR, 'assets'),
 	);
 
-	// Step 4: 写入报告文件
-	await fs.writeFile(REPORT_PATH, JSON.stringify(report, null, 2), 'utf-8');
+	// Step 5: 写入报告文件（包含图片和XML对比结果）
+	const fullReport = { images: imageReport, xml: report };
+	await fs.writeFile(REPORT_PATH, JSON.stringify(fullReport, null, 2), 'utf-8');
 
 	// 验证至少处理了一些文件
 	t.true(report.summary.totalFiles > 0, 'should have processed at least one XML file');

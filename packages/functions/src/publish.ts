@@ -572,6 +572,14 @@ function collectPackagePublishContext(
 		}
 	}
 
+	// Font references - ensure bitmap font textures and glyph images are included
+	for (const resource of resources) {
+		if (isFontResource(resource)) {
+			const textureId = (resource as any).getTextureId?.() ?? '';
+			if (textureId) referencedIds.add(textureId);
+		}
+	}
+
 	const publishedResourceIds = new Set<string>(spriteItemIds);
 	for (const resource of resources) {
 		const resourceId = resource.getId();
