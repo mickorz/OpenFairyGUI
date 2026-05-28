@@ -61,9 +61,14 @@ export interface AdaptationSettings {
 	devices?: unknown[];
 }
 
+export interface I18nSettings {
+	langFiles: string[];
+}
+
 export interface ProjectSettings {
 	publish?: PublishSettings;
 	common?: CommonSettings;
 	adaptation?: AdaptationSettings;
+	i18n?: I18nSettings;
 	[key: string]: unknown;
 }

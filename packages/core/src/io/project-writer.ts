@@ -806,6 +806,7 @@ export class ProjectWriter {
 			'Publish.json': 'publish',
 			'Common.json': 'common',
 			'Adaptation.json': 'adaptation',
+			'i18n.json': 'i18n',
 		};
 		for (const [fileName, key] of Object.entries(settingFiles)) {
 			if (settings[key]) {

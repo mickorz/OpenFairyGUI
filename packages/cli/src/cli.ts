@@ -38,6 +38,7 @@ Publish options:
   --packages <a,b,c>     Only publish specific packages (comma-separated)
   --branch <name>        Active branch used by "主干合并活跃分支"; omit for main branch
   --project-type <name|id>  Override project type (for example: unity, layabox, cocoscreator, 0, 4, 3)
+  --max-atlas-size <n>    Override max atlas texture size (default: from project settings or 2048)
 
 Restore options:
   --output, -o <dir>     Output project directory (required)
@@ -45,6 +46,7 @@ Restore options:
   --force                Overwrite a non-empty output directory
   --project-type <name|id>  Override restored project type; default is unity
   --font-dir <dir>       Directory containing .ttf font files to copy into the restored project
+  --lang-dir <dir>       Directory containing localization txt files to copy into the restored project
 
 Options:
   --help, -h     Show this help
@@ -104,9 +106,9 @@ async function main(): Promise<void> {
 			break;
 		case 'restore':
 			await cmdRestore(rest);
-			case 'list-fonts':
-				await cmdListFonts(rest);
-				break;
+			break;
+		case 'list-fonts':
+			await cmdListFonts(rest);
 			break;
 		default:
 			console.error(`Unknown command: ${command}\n`);
@@ -402,6 +404,7 @@ async function cmdRestore(args: string[]): Promise<void> {
 			force: { type: 'boolean' },
 			'project-type': { type: 'string' },
 			'font-dir': { type: 'string' },
+				'lang-dir': { type: 'string' },
 		},
 		allowPositionals: true,
 	});
@@ -430,6 +433,7 @@ async function cmdRestore(args: string[]): Promise<void> {
 		getImageSize,
 		padImage,
 			fontDir: values['font-dir'] ? path.resolve(values['font-dir']) : undefined,
+			langDir: values['lang-dir'] ? path.resolve(values['lang-dir']) : undefined,
 	});
 
 	const packages = result.document.getRoot().listPackages();
@@ -449,6 +453,7 @@ async function cmdPublish(args: string[]): Promise<void> {
 			packages: { type: 'string' },
 			branch: { type: 'string' },
 			'project-type': { type: 'string' },
+			'max-atlas-size': { type: 'string' },
 		},
 		allowPositionals: true,
 	});
@@ -471,9 +476,11 @@ async function cmdPublish(args: string[]): Promise<void> {
 	}
 
 	const pkgFilter = values.packages ? values.packages.split(',').map((s) => s.trim()) : undefined;
+	const maxAtlasSize = values['max-atlas-size'] ? Number(values['max-atlas-size']) : undefined;
 	const resolved = resolvePublishOptions(doc, {
 		compressed: values.compressed,
 		packages: pkgFilter,
+		atlas: maxAtlasSize ? { maxSize: maxAtlasSize } : undefined,
 	});
 
 	console.log(`Settings: ext=${resolved.fileExtension}, compressed=${resolved.compressed}`);

@@ -37,6 +37,7 @@ interface RestoreExecutionOptions {
 	getImageSize?: (filePath: string) => Promise<{ width: number; height: number } | null>;
 	padImage?: (sourcePath: string, outputPath: string, width: number, height: number) => Promise<void>;
 	fontDir?: string;
+	langDir?: string;
 }
 
 export interface RestoreResult {
@@ -64,6 +65,7 @@ export interface RestoreOptions {
 	getImageSize?: (filePath: string) => Promise<{ width: number; height: number } | null>;
 	padImage?: (sourcePath: string, outputPath: string, width: number, height: number) => Promise<void>;
 	fontDir?: string;
+	langDir?: string;
 }
 
 export interface FontInfo {
@@ -592,6 +594,7 @@ export async function restore(options: RestoreOptions): Promise<RestoreResult> {
 		getImageSize: options.getImageSize,
 		padImage: options.padImage,
 		fontDir: options.fontDir,
+		langDir: options.langDir,
 	});
 }
 
@@ -651,6 +654,7 @@ class RestoreWorkflow {
 	private readonly _fs: RestoreFileSystem;
 	private _sourceDirs: string[] = [];
 	private _fontDir: string | undefined;
+	private _langDir: string | undefined;
 
 	constructor(fs: RestoreFileSystem) {
 		this._fs = fs;
@@ -659,6 +663,7 @@ class RestoreWorkflow {
 	async restore(options: RestoreExecutionOptions): Promise<RestoreResult> {
 		this._sourceDirs = options.sourceDirs?.length ? options.sourceDirs : [options.sourceDir];
 		this._fontDir = options.fontDir;
+		this._langDir = options.langDir;
 		const warnings: string[] = [];
 		const reader = new BinaryReader(this._fs);
 		const doc = await reader.readMany(options.binaryPaths);
@@ -673,7 +678,9 @@ class RestoreWorkflow {
 		this._initializePublishedTextFontResources(doc);
 		this._initializeDisplayObjectFileNames(doc);
 		this._initializePublishedFontDefaults(doc);
+		this._inferAtlasMaxSize(doc);
 
+		await this._initializeI18nSettings(doc, options);
 		const writer = new ProjectWriter(this._fs);
 		await writer.write(doc, options.outputProjectPath);
 		await this._restoreAssets(doc, options, warnings);
@@ -699,6 +706,25 @@ class RestoreWorkflow {
 				common: {},
 				adaptation: {},
 			});
+	}
+
+	/** 从还原出的图集尺寸推断 atlas maxSize 并写入 Publish.json */
+	private _inferAtlasMaxSize(doc: Document): void {
+		let maxDim = 0;
+		for (const pkg of doc.getRoot().listPackages()) {
+			for (const atlas of pkg.listAtlases()) {
+				maxDim = Math.max(maxDim, atlas.getWidth(), atlas.getHeight());
+			}
+		}
+		if (maxDim <= 0) return;
+		// 向上取到 2 的幂次
+		let maxSize = 1;
+		while (maxSize < maxDim) maxSize <<= 1;
+		// 最小 2048
+		maxSize = Math.max(maxSize, 2048);
+		const settings = doc.getRoot().getSettings?.() ?? {};
+		const publish = { ...(settings.publish ?? {}), atlasSetting: { maxSize, paging: true } };
+		doc.getRoot().setSettings?.({ ...settings, publish });
 	}
 
 	private _initializeImageFileNames(doc: Document): void {
@@ -1099,7 +1125,9 @@ class RestoreWorkflow {
 			await this._copyLooseResources(pkg, options, warnings);
 			await this._copyTtfFonts(pkg, options, warnings);
 		}
+		await this._copyLangFiles(doc, options, warnings);
 	}
+
 
 
 	private async _copyTtfFonts(
@@ -1131,6 +1159,45 @@ class RestoreWorkflow {
 
 			const sourcePath = this._fs.join(this._fontDir!, match);
 			const outputPath = this._resourceOutputPath(options.outputProjectPath, pkg, resource, fileName);
+			await this._mkdirForFile(outputPath);
+			await this._fs.writeFileRaw(outputPath, await this._fs.readFileRaw(sourcePath));
+		}
+	}
+
+
+	private _langFileNames: string[] = [];
+
+	private async _initializeI18nSettings(doc: Document, options: RestoreExecutionOptions): Promise<void> {
+		if (!this._langDir) return;
+
+		const langDirEntries = await this._fs.readdir(this._langDir).catch(() => [] as string[]);
+		const langFileRegex = /^_?fairy多语言_(.+)\.txt$/;
+		this._langFileNames = langDirEntries.filter(e => langFileRegex.test(e));
+		if (this._langFileNames.length === 0) return;
+
+		const langNames = [...new Set(
+			this._langFileNames
+				.map(e => langFileRegex.exec(e)?.[1])
+				.filter((n): n is string => !!n),
+		)];
+		const settings = doc.getRoot().getSettings?.() ?? {};
+		doc.getRoot().setSettings?.({
+			...settings,
+			i18n: { langFiles: langNames },
+		});
+	}
+
+	private async _copyLangFiles(
+		doc: Document,
+		options: RestoreExecutionOptions,
+		warnings: string[],
+	): Promise<void> {
+		if (!this._langDir || this._langFileNames.length === 0) return;
+
+		const basePath = this._fs.dirname(options.outputProjectPath);
+		for (const fileName of this._langFileNames) {
+			const sourcePath = this._fs.join(this._langDir!, fileName);
+			const outputPath = this._fs.join(basePath, fileName);
 			await this._mkdirForFile(outputPath);
 			await this._fs.writeFileRaw(outputPath, await this._fs.readFileRaw(sourcePath));
 		}
