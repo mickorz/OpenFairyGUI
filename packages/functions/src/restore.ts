@@ -1171,10 +1171,13 @@ class RestoreWorkflow {
 		const langFileRegex = /^fairy多语言_(.+).txt$/;
 		const langFiles: Array<{ name: string; path: string; fontName: string }> = [];
 
+		const basePath = this._fs.dirname(options.outputProjectPath);
+
 		for (const entry of langDirEntries) {
 			const match = langFileRegex.exec(entry);
 			if (match) {
-				langFiles.push({ name: match[1], path: entry, fontName: "" });
+				const absPath = this._fs.join(basePath, entry);
+				langFiles.push({ name: match[1], path: absPath, fontName: "" });
 			}
 		}
 		if (langFiles.length === 0) return;
