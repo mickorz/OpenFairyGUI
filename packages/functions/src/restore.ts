@@ -679,7 +679,6 @@ class RestoreWorkflow {
 		this._initializeDisplayObjectFileNames(doc);
 		this._initializePublishedFontDefaults(doc);
 		this._inferAtlasMaxSize(doc);
-
 		await this._initializeI18nSettings(doc, options);
 		const writer = new ProjectWriter(this._fs);
 		await writer.write(doc, options.outputProjectPath);
@@ -1165,37 +1164,43 @@ class RestoreWorkflow {
 	}
 
 
-	private _langFileNames: string[] = [];
-
 	private async _initializeI18nSettings(doc: Document, options: RestoreExecutionOptions): Promise<void> {
 		if (!this._langDir) return;
 
 		const langDirEntries = await this._fs.readdir(this._langDir).catch(() => [] as string[]);
-		const langFileRegex = /^_?fairy多语言_(.+)\.txt$/;
-		this._langFileNames = langDirEntries.filter(e => langFileRegex.test(e));
-		if (this._langFileNames.length === 0) return;
+		const langFileRegex = /^fairy多语言_(.+).txt$/;
+		const langFiles: Array<{ name: string; path: string; fontName: string }> = [];
 
-		const langNames = [...new Set(
-			this._langFileNames
-				.map(e => langFileRegex.exec(e)?.[1])
-				.filter((n): n is string => !!n),
-		)];
+		for (const entry of langDirEntries) {
+			const match = langFileRegex.exec(entry);
+			if (match) {
+				langFiles.push({ name: match[1], path: entry, fontName: "" });
+			}
+		}
+		if (langFiles.length === 0) return;
+
 		const settings = doc.getRoot().getSettings?.() ?? {};
 		doc.getRoot().setSettings?.({
 			...settings,
-			i18n: { langFiles: langNames },
+			i18n: { langFiles },
 		});
 	}
+
 
 	private async _copyLangFiles(
 		doc: Document,
 		options: RestoreExecutionOptions,
 		warnings: string[],
 	): Promise<void> {
-		if (!this._langDir || this._langFileNames.length === 0) return;
+		if (!this._langDir) return;
+
+		const langDirEntries = await this._fs.readdir(this._langDir).catch(() => [] as string[]);
+		// 只匹配多语言文件，不带 _ 前缀的 CSV 备份
+		const langFiles = langDirEntries.filter(e => /^fairy多语言_.+\.txt$/.test(e));
+		if (langFiles.length === 0) return;
 
 		const basePath = this._fs.dirname(options.outputProjectPath);
-		for (const fileName of this._langFileNames) {
+		for (const fileName of langFiles) {
 			const sourcePath = this._fs.join(this._langDir!, fileName);
 			const outputPath = this._fs.join(basePath, fileName);
 			await this._mkdirForFile(outputPath);

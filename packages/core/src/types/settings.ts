@@ -61,8 +61,14 @@ export interface AdaptationSettings {
 	devices?: unknown[];
 }
 
+export interface I18nLangFile {
+	name: string;
+	path: string;
+	fontName?: string;
+}
+
 export interface I18nSettings {
-	langFiles: string[];
+	langFiles: I18nLangFile[];
 }
 
 export interface ProjectSettings {
