@@ -150,6 +150,16 @@ export class GTextField<
 	public setX(v: number): this { return this.setTextFieldProp('x', v); }
 	public setY(v: number): this { return this.setTextFieldProp('y', v); }
 
+	public getPivotX(): number { return this.getTextFieldProp('pivotX'); }
+	public getPivotY(): number { return this.getTextFieldProp('pivotY'); }
+	public getPivotAsAnchor(): boolean { return this.getTextFieldProp('anchor'); }
+	public setPivot(x: number, y: number, anchor = false): this {
+		this.setTextFieldProp('pivotX', x);
+		this.setTextFieldProp('pivotY', y);
+		return this.setTextFieldProp('anchor', anchor);
+	}
+	public setPivotAsAnchor(v: boolean): this { return this.setTextFieldProp('anchor', v); }
+
 	public getGroup(): string { return this.getTextFieldProp('group'); }
 	public setGroup(v: string): this { return this.setTextFieldProp('group', v); }
 

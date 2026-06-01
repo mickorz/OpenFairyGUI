@@ -1646,6 +1646,12 @@ export class ProjectReader {
 					const [w, h] = parseSizeString(textSize);
 					g.setSize(w, h);
 				}
+				const textPivot = readXmlAttr<string>(attrs, PROJECT_XML_PROTOCOL.text.attrs.pivot);
+				if (textPivot) {
+					const [pivotX, pivotY] = parseXYString(textPivot);
+					const textAnchor = readXmlAttr<string | boolean>(attrs, PROJECT_XML_PROTOCOL.text.attrs.anchor);
+					g.setPivot(pivotX, pivotY, parseBool(textAnchor));
+				}
 				const textRestrictSize = readXmlAttr<string>(attrs, PROJECT_XML_PROTOCOL.text.attrs.restrictSize);
 				if (textRestrictSize) {
 					const parts = textRestrictSize.split(',').map(Number);
@@ -1751,6 +1757,12 @@ export class ProjectReader {
 					const [w, h] = parseSizeString(richTextSize);
 					g.setSize(w, h);
 				}
+				const richTextPivot = readXmlAttr<string>(attrs, PROJECT_XML_PROTOCOL.text.attrs.pivot);
+				if (richTextPivot) {
+					const [pivotX, pivotY] = parseXYString(richTextPivot);
+					const richTextAnchor = readXmlAttr<string | boolean>(attrs, PROJECT_XML_PROTOCOL.text.attrs.anchor);
+					g.setPivot(pivotX, pivotY, parseBool(richTextAnchor));
+				}
 				const richTextRestrictSize = readXmlAttr<string>(attrs, PROJECT_XML_PROTOCOL.richText.attrs.restrictSize);
 				if (richTextRestrictSize) {
 					const parts = richTextRestrictSize.split(',').map(Number);
@@ -1825,6 +1837,12 @@ export class ProjectReader {
 				if (inputSize) {
 					const [w, h] = parseSizeString(inputSize);
 					g.setSize(w, h);
+				}
+				const inputPivot = readXmlAttr<string>(attrs, PROJECT_XML_PROTOCOL.text.attrs.pivot);
+				if (inputPivot) {
+					const [pivotX, pivotY] = parseXYString(inputPivot);
+					const inputAnchor = readXmlAttr<string | boolean>(attrs, PROJECT_XML_PROTOCOL.text.attrs.anchor);
+					g.setPivot(pivotX, pivotY, parseBool(inputAnchor));
 				}
 				const inputRestrictSize = readXmlAttr<string>(attrs, PROJECT_XML_PROTOCOL.text.attrs.restrictSize);
 				if (inputRestrictSize) {

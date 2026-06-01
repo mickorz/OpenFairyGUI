@@ -1518,6 +1518,11 @@ export class ProjectWriter {
 			const [w, h] = [typedObj.getWidth?.() ?? 0, typedObj.getHeight?.() ?? 0];
 			if (w !== 0 || h !== 0) writeXmlAttr(attrs, PROJECT_XML_PROTOCOL.group.attrs.size, `${w},${h}`);
 			if (typedObj.getLocked?.()) writeXmlAttr(attrs, PROJECT_XML_PROTOCOL.group.attrs.locked, 'true');
+			const [pivotX, pivotY] = [typedObj.getPivotX?.() ?? 0, typedObj.getPivotY?.() ?? 0];
+			if (pivotX !== 0 || pivotY !== 0) {
+				writeXmlAttr(attrs, PROJECT_XML_PROTOCOL.group.attrs.pivot, `${formatTrimmedFixed(pivotX, 3)},${formatTrimmedFixed(pivotY, 3)}`);
+				if (typedObj.getPivotAsAnchor?.()) writeXmlAttr(attrs, PROJECT_XML_PROTOCOL.group.attrs.anchor, 'true');
+			}
 		}
 		if (type === 'GLoader') {
 			writeXmlAttr(attrs, PROJECT_XML_PROTOCOL.loader.attrs.xy, `${xyX},${xyY}`);
@@ -1592,6 +1597,11 @@ export class ProjectWriter {
 			const [w, h] = [typedObj.getWidth?.() ?? 0, typedObj.getHeight?.() ?? 0];
 			// 始终写出 size 属性，确保 binary roundtrip 不丢失数据
 			writeXmlAttr(attrs, PROJECT_XML_PROTOCOL.text.attrs.size, `${w},${h}`);
+			const [pivotX, pivotY] = [typedObj.getPivotX?.() ?? 0, typedObj.getPivotY?.() ?? 0];
+			if (pivotX !== 0 || pivotY !== 0) {
+				writeXmlAttr(attrs, PROJECT_XML_PROTOCOL.text.attrs.pivot, `${formatTrimmedFixed(pivotX, 3)},${formatTrimmedFixed(pivotY, 3)}`);
+				if (typedObj.getPivotAsAnchor?.()) writeXmlAttr(attrs, PROJECT_XML_PROTOCOL.text.attrs.anchor, 'true');
+			}
 			const restrictSize = [
 				typedObj.getMinWidth?.() ?? 0,
 				typedObj.getMaxWidth?.() ?? 0,

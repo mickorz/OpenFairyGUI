@@ -76,6 +76,16 @@ export class GGroup extends GObject<IGGroup, PropertyType.G_GROUP> {
 	public setX(v: number): this { return this.set('x', v); }
 	public setY(v: number): this { return this.set('y', v); }
 
+	public getPivotX(): number { return this.get('pivotX'); }
+	public getPivotY(): number { return this.get('pivotY'); }
+	public getPivotAsAnchor(): boolean { return this.get('anchor'); }
+	public setPivot(x: number, y: number, anchor = false): this {
+		this.set('pivotX', x);
+		this.set('pivotY', y);
+		return this.set('anchor', anchor);
+	}
+	public setPivotAsAnchor(v: boolean): this { return this.set('anchor', v); }
+
 	public getAlpha(): number { return this.get('alpha'); }
 	public setAlpha(v: number): this { return this.set('alpha', v); }
 

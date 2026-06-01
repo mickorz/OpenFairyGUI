@@ -310,6 +310,8 @@ const TEXT_PANEL_ATTRS = {
 	faceDilate: { canonical: 'faceDilate' },
 	underlaySoftness: { canonical: 'underlaySoftness' },
 	vars: { canonical: 'vars' },
+	pivot: { canonical: 'pivot' },
+	anchor: { canonical: 'anchor' },
 } satisfies XmlAttrMap;
 
 const TEXT_INPUT_PANEL_ATTRS = {
@@ -719,6 +721,8 @@ const GROUP_NODE = defineNode(
 		GROUP_REF_ATTRS,
 		VISIBLE_ATTRS,
 		GROUP_PANEL_ATTRS,
+		PIVOT_ATTRS,
+		ANCHOR_ATTRS,
 	),
 	// FairyGUI editor only exposes relation/gear channels on advanced groups.
 	// Protocol metadata stays static, so we keep the child set narrow here and
@@ -732,6 +736,8 @@ const LIST_NODE = defineNode(
 		GROUP_REF_ATTRS,
 		TOUCHABLE_ATTRS,
 		LIST_PANEL_ATTRS,
+		PIVOT_ATTRS,
+		ANCHOR_ATTRS,
 	),
 	mergeChildren(
 		WITH_RELATION_CHILDREN,
