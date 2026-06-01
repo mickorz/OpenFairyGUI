@@ -286,6 +286,13 @@ async function createRestoreImageProcessors(): Promise<RestoreImageProcessors> {
 				.png()
 				.toFile(outputPath);
 		},
+		upscaleImage: async (sourcePath: string, outputPath: string, width: number, height: number): Promise<void> => {
+			// 将降采样的图集放大到逻辑尺寸, 使用最近邻插值保持像素锐利
+			await sharp(sourcePath, { limitInputPixels: false })
+				.resize(width, height, { kernel: 'nearest' })
+				.png()
+				.toFile(outputPath);
+		},
 	};
 }
 
@@ -418,7 +425,7 @@ async function cmdRestore(args: string[]): Promise<void> {
 	const outputDir = path.resolve(values.output);
 	const pkgFilter = values.packages ? values.packages.split(',').map((s) => s.trim()).filter(Boolean) : undefined;
 	const projectType = parseProjectType(values['project-type']);
-	const { cropImage, extractImage, getImageSize, padImage } = await createRestoreImageProcessors();
+	const { cropImage, extractImage, getImageSize, padImage, upscaleImage } = await createRestoreImageProcessors();
 
 	console.log(`Restoring published FairyGUI project: ${releaseDir}`);
 	const result = await restore({
@@ -432,6 +439,7 @@ async function cmdRestore(args: string[]): Promise<void> {
 		extractImage,
 		getImageSize,
 		padImage,
+		upscaleImage,
 			fontDir: values['font-dir'] ? path.resolve(values['font-dir']) : undefined,
 			langDir: values['lang-dir'] ? path.resolve(values['lang-dir']) : undefined,
 	});
