@@ -1164,17 +1164,22 @@ export class ProjectReader {
 				ctx.registerResource(pkg.getId(), id, res);
 				return res;
 			}
-			case 'movieclip': {
-				const res = doc.createMovieClipResource(name.replace(/\.\w+$/, ''));
-				res.setId(id);
-				res.setPath(path);
-				res.setBranch(branchName);
-				res.setFileName(name);
-				res.setExported(exported);
-				pkg.addResource(res);
-				ctx.registerResource(pkg.getId(), id, res);
-				return res;
-			}
+				case 'movieclip': {
+					const res = doc.createMovieClipResource(name.replace(/.w+$/, ''));
+					res.setId(id);
+					res.setPath(path);
+					res.setBranch(branchName);
+					res.setFileName(name);
+					res.setExported(exported);
+					// 从 package.xml 读取 width/height
+					const mcWidth = Number(attrs.width ?? 0) || 0;
+					const mcHeight = Number(attrs.height ?? 0) || 0;
+					if (mcWidth > 0) res.setWidth(mcWidth);
+					if (mcHeight > 0) res.setHeight(mcHeight);
+					pkg.addResource(res);
+					ctx.registerResource(pkg.getId(), id, res);
+					return res;
+				}
 			default: {
 				// swf, atlas — store as extras on package for now
 				return null;

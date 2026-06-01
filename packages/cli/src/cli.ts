@@ -39,6 +39,7 @@ Publish options:
   --branch <name>        Active branch used by "主干合并活跃分支"; omit for main branch
   --project-type <name|id>  Override project type (for example: unity, layabox, cocoscreator, 0, 4, 3)
   --max-atlas-size <n>    Override max atlas texture size (default: from project settings or 2048)
+  --no-atlas             Skip atlas packing (only output .fui binary, no atlas PNGs)
 
 Restore options:
   --output, -o <dir>     Output project directory (required)
@@ -462,6 +463,7 @@ async function cmdPublish(args: string[]): Promise<void> {
 			branch: { type: 'string' },
 			'project-type': { type: 'string' },
 			'max-atlas-size': { type: 'string' },
+			'no-atlas': { type: 'boolean' },
 		},
 		allowPositionals: true,
 	});
@@ -548,6 +550,7 @@ async function cmdPublish(args: string[]): Promise<void> {
 		basePath: path.join(projectDir, 'assets'),
 		atlas: atlasConfig,
 		branch: values.branch,
+		skipAtlas: values['no-atlas'],
 	}));
 
 	console.log(`\nDone! Output: ${outputDir}`);

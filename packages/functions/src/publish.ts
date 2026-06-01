@@ -62,6 +62,11 @@ export interface PublishOptions {
 	atlas?: Omit<AtlasOptions, 'encoder' | 'basePath' | 'outputPath'>;
 
 	/**
+	 * Skip atlas packing entirely. Use when only the .fui binary is needed
+	 * (e.g. for roundtrip comparison without atlas layout changes).
+	 */
+	skipAtlas?: boolean;
+	/**
 	 * Filter which packages to publish by name. If not set, all packages are published.
 	 */
 	packages?: string[];
@@ -1003,7 +1008,11 @@ export function publish(options: PublishOptions): Transform {
 			readFileRaw: options.atlas?.readFileRaw ?? options.fs?.readFileRaw,
 			...atlasRuntimeOptions,
 		};
-		await atlas(atlasOpts)(doc);
+		if (!options.skipAtlas) {
+			await atlas(atlasOpts)(doc);
+		} else {
+			logger.info("publish: Skipping atlas packing (--no-atlas).");
+		}
 
 		// Step 3: Write .fui binary per package
 		if (!options.fs) {

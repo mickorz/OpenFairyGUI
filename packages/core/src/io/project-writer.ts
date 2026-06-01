@@ -1082,6 +1082,15 @@ export class ProjectWriter {
 				if (samplePointSize !== 0) writeXmlAttr(attrs, PROJECT_XML_PROTOCOL.packageFontResource.attrs.samplePointSize, String(samplePointSize));
 			}
 
+
+				// MovieClip-specific: width/height
+				if (res.propertyType === "MovieClipResource") {
+					const mcRes = res as WritableMovieClipResource;
+					const mcWidth = mcRes.getWidth?.() ?? 0;
+					if (mcWidth !== 0) writeXmlAttr(attrs, PROJECT_XML_PROTOCOL.packageMovieClipResource.attrs.width, String(mcWidth));
+					const mcHeight = mcRes.getHeight?.() ?? 0;
+					if (mcHeight !== 0) writeXmlAttr(attrs, PROJECT_XML_PROTOCOL.packageMovieClipResource.attrs.height, String(mcHeight));
+				}
 			if (res.propertyType === 'SpineResource' || res.propertyType === 'DragonBonesResource') {
 				const skeletonRes = res as WritableSkeletonResource;
 				writeXmlAttr(attrs, PROJECT_XML_PROTOCOL.packageSkeletonResource.attrs.width, String(skeletonRes.getWidth?.() ?? 0));

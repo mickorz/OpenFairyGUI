@@ -94,6 +94,11 @@ const PACKAGE_FONT_RESOURCE_ATTRS = {
 	samplePointSize: { canonical: 'samplePointSize' },
 } satisfies XmlAttrMap;
 
+	const PACKAGE_MOVIECLIP_RESOURCE_ATTRS = {
+		width: { canonical: 'width' },
+		height: { canonical: 'height' },
+	} satisfies XmlAttrMap;
+
 const PACKAGE_SKELETON_RESOURCE_ATTRS = {
 	width: { canonical: 'width' },
 	height: { canonical: 'height' },
@@ -507,6 +512,7 @@ const PACKAGE_RESOURCE_NODE = defineNode(PACKAGE_RESOURCE_BASE_ATTRS);
 const PACKAGE_IMAGE_RESOURCE_NODE = defineNode(PACKAGE_IMAGE_RESOURCE_ATTRS);
 const PACKAGE_FONT_RESOURCE_NODE = defineNode(PACKAGE_FONT_RESOURCE_ATTRS);
 const PACKAGE_SKELETON_RESOURCE_NODE = defineNode(PACKAGE_SKELETON_RESOURCE_ATTRS);
+const PACKAGE_MOVIECLIP_RESOURCE_NODE = defineNode(PACKAGE_MOVIECLIP_RESOURCE_ATTRS);
 const DISPLAY_OBJECT_NODE = defineNode(DISPLAY_OBJECT_IDENTITY_ATTRS);
 const BUTTON_EXTENSION_NODE = defineNode(BUTTON_EXTENSION_ATTRS);
 const LABEL_EXTENSION_NODE = defineNode(LABEL_EXTENSION_ATTRS);
@@ -778,6 +784,7 @@ export const PROJECT_XML_PROTOCOL = {
 	packageImageResource: PACKAGE_IMAGE_RESOURCE_NODE,
 	packageFontResource: PACKAGE_FONT_RESOURCE_NODE,
 	packageSkeletonResource: PACKAGE_SKELETON_RESOURCE_NODE,
+		packageMovieClipResource: PACKAGE_MOVIECLIP_RESOURCE_NODE,
 	displayObject: DISPLAY_OBJECT_NODE,
 	image: IMAGE_NODE,
 	graph: GRAPH_NODE,
