@@ -587,6 +587,71 @@ export class BinaryReader {
 			});
 		}
 
+		// Hydrate displayList child sizes from source resource dimensions.
+		// When the binary has hasSize=false for a child, FairyGUI uses the source
+		// resource's natural dimensions at runtime. We replicate this here so the
+		// restored XML contains correct size values.
+		_hydrateChildSizesFromResources(pkg);
+
 		return doc;
+	}
+}
+
+/**
+ * After all package resources are loaded, hydrate displayList child sizes from
+ * source resource dimensions. When the binary format has hasSize=false for a
+ * displayList child (GImage/GMovieClip/GComponent), FairyGUI uses the source
+ * resource's natural dimensions at runtime. We replicate this behavior here so
+ * the restored project XML contains correct size values.
+ */
+function _hydrateChildSizesFromResources(pkg: Package): void {
+	// Build a lookup map: resourceId -> { width, height }
+	const resourceSizeMap = new Map<string, { w: number; h: number }>();
+	for (const res of pkg.listResources()) {
+		const id = res.getId();
+		if (!id) continue;
+		const hasSize = 'getWidth' in res && 'getHeight' in res;
+		if (!hasSize) continue;
+		const w = (res as { getWidth(): number }).getWidth();
+		const h = (res as { getHeight(): number }).getHeight();
+		if (w > 0 || h > 0) {
+			resourceSizeMap.set(id, { w, h });
+		}
+	}
+
+	// Iterate all component resources and hydrate their displayList children
+	for (const res of pkg.listResources()) {
+		if (res.propertyType !== 'Component') continue;
+		const comp = res as unknown as {
+			listChildren(): Array<{
+				propertyType: string;
+				getSrc?(): string;
+				getWidth?(): number;
+				getHeight?(): number;
+				setSize?(w: number, h: number): unknown;
+			}>;
+		};
+		const children = comp.listChildren();
+		for (const child of children) {
+			// Only handle types that have src-based size inheritance
+			const type = child.propertyType;
+			if (type !== 'GImage' && type !== 'GMovieClip'
+				&& type !== 'GComponent' && type !== 'GButton' && type !== 'GLabel'
+				&& type !== 'GList' && type !== 'GTree' && type !== 'GComboBox'
+				&& type !== 'GProgressBar' && type !== 'GSlider' && type !== 'GScrollBar'
+				&& type !== 'GLoader3D') {
+				continue;
+			}
+			// Skip children that already have size
+			const childW = child.getWidth?.() ?? 0;
+			const childH = child.getHeight?.() ?? 0;
+			if (childW > 0 || childH > 0) continue;
+			// Look up source resource
+			const src = child.getSrc?.();
+			if (!src) continue;
+			const srcSize = resourceSizeMap.get(src);
+			if (!srcSize) continue;
+			child.setSize?.(srcSize.w, srcSize.h);
+		}
 	}
 }
