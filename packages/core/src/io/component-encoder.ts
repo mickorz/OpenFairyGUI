@@ -164,13 +164,15 @@ type EncoderChildLike = ChildNode & {
 	getTooltips?(): string;
 };
 
+/**
+ * 返回组件的所有子元素列表，用于二进制编码。
+ *
+ * FairyGUI 编辑器在二进制中包含所有子元素（包括非 advanced 的 GGroup），
+ * 因为 GGroup 在 display list 中仍然占位，其他子元素的 group 引用和
+ * relation 目标都依赖于正确的 display list 索引。
+ */
 function getRuntimeChildren(comp: Component): EncoderChildLike[] {
-	return comp
-		.listChildren()
-		.filter((child) => {
-			const typedChild = child as EncoderChildLike;
-			return typedChild.propertyType !== 'GGroup' || typedChild.getAdvanced?.() === true;
-		}) as EncoderChildLike[];
+	return comp.listChildren() as EncoderChildLike[];
 }
 
 function getRuntimeChildIndexMap(comp: Component): Map<string, number> {
@@ -1654,10 +1656,11 @@ function _writeChildAfterAdd(buf: WriteBuffer, child: EncoderChildLike, comp: Co
 			}
 			// relatedPageId
 			buf.writeS(btnExtras?.page ?? null);
-			// sound override
-			buf.writeSEx(remapLocalUiUrl(pkg, _strVal(btnExtras?.sound)) ?? null, false, false);
+			// sound override - 优先从 extras 读取，回退到对象属性
+			const btnSound = btnExtras?.sound ?? child.getSound?.() ?? null;
+			buf.writeSEx(remapLocalUiUrl(pkg, _strVal(btnSound)) ?? null, false, false);
 			// soundVolume override
-			const btnVolume = btnExtras?.volume;
+			const btnVolume = btnExtras?.volume ?? child.getSoundVolumeScale?.();
 			if (btnVolume !== undefined && btnVolume !== null) {
 				buf.writeBool(true);
 				buf.writeFloat32(_numVal(btnVolume, 0) / 100);

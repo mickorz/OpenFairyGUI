@@ -1165,7 +1165,7 @@ export class ProjectReader {
 				return res;
 			}
 				case 'movieclip': {
-					const res = doc.createMovieClipResource(name.replace(/.w+$/, ''));
+					const res = doc.createMovieClipResource(name.replace(/\.\w+$/, ''));
 					res.setId(id);
 					res.setPath(path);
 					res.setBranch(branchName);

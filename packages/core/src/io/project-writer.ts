@@ -1392,7 +1392,8 @@ export class ProjectWriter {
 		if (type === 'GComponent') {
 			writeXmlAttr(attrs, PROJECT_XML_PROTOCOL.componentInstance.attrs.xy, `${xyX},${xyY}`);
 			const [w, h] = [typedObj.getWidth?.() ?? 0, typedObj.getHeight?.() ?? 0];
-			if (w !== 0 || h !== 0) writeXmlAttr(attrs, PROJECT_XML_PROTOCOL.componentInstance.attrs.size, `${w},${h}`);
+			// 始终写出 size 属性，确保 binary roundtrip 不丢失数据
+			writeXmlAttr(attrs, PROJECT_XML_PROTOCOL.componentInstance.attrs.size, `${w},${h}`);
 			if (typedObj.getLocked?.()) writeXmlAttr(attrs, PROJECT_XML_PROTOCOL.componentInstance.attrs.locked, 'true');
 			const restrictSize = [
 				typedObj.getMinWidth?.() ?? 0,
@@ -1424,7 +1425,8 @@ export class ProjectWriter {
 		if (type === 'GImage') {
 			writeXmlAttr(attrs, PROJECT_XML_PROTOCOL.image.attrs.xy, `${xyX},${xyY}`);
 			const [w, h] = [typedObj.getWidth?.() ?? 0, typedObj.getHeight?.() ?? 0];
-			if (w !== 0 || h !== 0) writeXmlAttr(attrs, PROJECT_XML_PROTOCOL.image.attrs.size, `${w},${h}`);
+			// 始终写出 size 属性，确保 binary roundtrip 不丢失数据
+			writeXmlAttr(attrs, PROJECT_XML_PROTOCOL.image.attrs.size, `${w},${h}`);
 			if (typedObj.getLocked?.()) writeXmlAttr(attrs, PROJECT_XML_PROTOCOL.image.attrs.locked, 'true');
 			if (typedObj.getAspect?.()) writeXmlAttr(attrs, PROJECT_XML_PROTOCOL.image.attrs.aspect, 'true');
 			if (typedObj.getGroup?.()) writeXmlAttr(attrs, PROJECT_XML_PROTOCOL.image.attrs.group, typedObj.getGroup?.());
@@ -1588,7 +1590,8 @@ export class ProjectWriter {
 		if (type === 'GTextField' || type === 'GRichTextField' || type === 'GTextInput') {
 			writeXmlAttr(attrs, PROJECT_XML_PROTOCOL.text.attrs.xy, `${xyX},${xyY}`);
 			const [w, h] = [typedObj.getWidth?.() ?? 0, typedObj.getHeight?.() ?? 0];
-			if (w !== 0 || h !== 0) writeXmlAttr(attrs, PROJECT_XML_PROTOCOL.text.attrs.size, `${w},${h}`);
+			// 始终写出 size 属性，确保 binary roundtrip 不丢失数据
+			writeXmlAttr(attrs, PROJECT_XML_PROTOCOL.text.attrs.size, `${w},${h}`);
 			const restrictSize = [
 				typedObj.getMinWidth?.() ?? 0,
 				typedObj.getMaxWidth?.() ?? 0,
