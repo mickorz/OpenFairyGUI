@@ -1211,39 +1211,81 @@ class RestoreWorkflow {
 		}
 	}
 
-	private async _restoreAtlasImages(pkg: Package, options: RestoreExecutionOptions): Promise<void> {
-		if (!options.cropImage) return;
-		for (const atlas of pkg.listAtlases()) {
-			const sourceAtlas = await this._resolveSourceFile(options.sourceDir, this._sourceFileCandidates(pkg, atlas.getFile()));
-			if (!sourceAtlas) {
-				throw new Error(`Atlas image not found for package "${pkg.getName()}": ${this._sourceFileCandidates(pkg, atlas.getFile()).join(', ')}`);
-			}
-
-			// 计算图集需要的最小尺寸, 用于 pad 被裁剪过的图集
-			let maxAtlasX = 0;
-			let maxAtlasY = 0;
-			for (const sp of atlas.listSprites() as RestorableSprite[]) {
-				const right = sp.getRectX() + sp.getRectWidth();
-				const bottom = sp.getRectY() + sp.getRectHeight();
-				if (right > maxAtlasX) maxAtlasX = right;
-				if (bottom > maxAtlasY) maxAtlasY = bottom;
-			}
-			let paddedAtlasPath = sourceAtlas;
-			if (maxAtlasX > 0 && maxAtlasY > 0 && options.getImageSize && options.padImage) {
-				const actualSize = await options.getImageSize(sourceAtlas);
-				if (actualSize && (actualSize.width < maxAtlasX || actualSize.height < maxAtlasY)) {
-					const padW = Math.pow(2, Math.ceil(Math.log2(maxAtlasX)));
-					const padH = Math.pow(2, Math.ceil(Math.log2(maxAtlasY)));
-					console.warn('[restore] Atlas "' + atlas.getFile() + '" trimmed: ' + actualSize.width + 'x' + actualSize.height + ', padding to ' + padW + 'x' + padH);
-					paddedAtlasPath = sourceAtlas + '.padded.png';
-					await options.padImage(sourceAtlas, paddedAtlasPath, padW, padH);
+		private async _restoreAtlasImages(pkg: Package, options: RestoreExecutionOptions): Promise<void> {
+			if (!options.cropImage) return;
+			for (const atlas of pkg.listAtlases()) {
+				const sourceAtlas = await this._resolveSourceFile(options.sourceDir, this._sourceFileCandidates(pkg, atlas.getFile()));
+				if (!sourceAtlas) {
+					throw new Error(`Atlas image not found for package "${pkg.getName()}": ${this._sourceFileCandidates(pkg, atlas.getFile()).join(', ')}`);
 				}
-			}
 
-			for (const sprite of atlas.listSprites() as RestorableSprite[]) {
-				const image = findImageResource(pkg, sprite.getItemId());
-				if (!image) continue;
-				if (sprite.getRectWidth() <= 0 || sprite.getRectHeight() <= 0) {
+				// 获取实际图集图片尺寸
+				const logicalWidth = atlas.getWidth();
+				const logicalHeight = atlas.getHeight();
+				let actualWidth = logicalWidth;
+				let actualHeight = logicalHeight;
+				if (options.getImageSize) {
+					const actualSize = await options.getImageSize(sourceAtlas);
+					if (actualSize) {
+						actualWidth = actualSize.width;
+						actualHeight = actualSize.height;
+					}
+				}
+
+				// 计算图集缩放比例 (实际图片尺寸 vs 二进制记录的逻辑尺寸)
+				// FairyGUI 发布时可能对图集做降采样，运行时通过 UV 缩放映射坐标
+				const scaleX = logicalWidth > 0 ? actualWidth / logicalWidth : 1;
+				const scaleY = logicalHeight > 0 ? actualHeight / logicalHeight : 1;
+				const isScaled = Math.abs(scaleX - 1) > 0.001 || Math.abs(scaleY - 1) > 0.001;
+
+				// 计算图集需要的最小尺寸, 用于 pad 被裁剪过的图集 (仅未缩放的情况)
+				let maxAtlasX = 0;
+				let maxAtlasY = 0;
+				for (const sp of atlas.listSprites() as RestorableSprite[]) {
+					const right = sp.getRectX() + sp.getRectWidth();
+					const bottom = sp.getRectY() + sp.getRectHeight();
+					if (right > maxAtlasX) maxAtlasX = right;
+					if (bottom > maxAtlasY) maxAtlasY = bottom;
+				}
+				let workingAtlasPath = sourceAtlas;
+				if (!isScaled && maxAtlasX > 0 && maxAtlasY > 0 && options.getImageSize && options.padImage) {
+					if (actualWidth < maxAtlasX || actualHeight < maxAtlasY) {
+						const padW = Math.pow(2, Math.ceil(Math.log2(maxAtlasX)));
+						const padH = Math.pow(2, Math.ceil(Math.log2(maxAtlasY)));
+						console.warn('[restore] Atlas "' + atlas.getFile() + '" trimmed: ' + actualWidth + 'x' + actualHeight + ', padding to ' + padW + 'x' + padH);
+						workingAtlasPath = sourceAtlas + '.padded.png';
+						await options.padImage(sourceAtlas, workingAtlasPath, padW, padH);
+					}
+				}
+				if (isScaled) {
+					console.warn('[restore] Atlas "' + atlas.getFile() + '" scaled: logical ' + logicalWidth + 'x' + logicalHeight + ', actual ' + actualWidth + 'x' + actualHeight + ', scale ' + scaleX.toFixed(3) + 'x' + scaleY.toFixed(3));
+				}
+
+				// 计算缩放后的 sprite 提取坐标
+				const resolveSpriteCoords = (sprite: RestorableSprite) => {
+					if (!isScaled) {
+						return {
+							left: sprite.getRectX(),
+							top: sprite.getRectY(),
+							width: sprite.getRectWidth(),
+							height: sprite.getRectHeight(),
+						};
+					}
+					// 缩放坐标: 将逻辑坐标映射到实际图集像素坐标
+					return {
+						left: Math.round(sprite.getRectX() * scaleX),
+						top: Math.round(sprite.getRectY() * scaleY),
+						width: Math.round(sprite.getRectWidth() * scaleX),
+						height: Math.round(sprite.getRectHeight() * scaleY),
+					};
+				};
+
+				for (const sprite of atlas.listSprites() as RestorableSprite[]) {
+					const image = findImageResource(pkg, sprite.getItemId());
+					if (!image) continue;
+					const coords = resolveSpriteCoords(sprite);
+
+					if (coords.width <= 0 || coords.height <= 0) {
 						// sprite 在图集中尺寸为0（被发布器裁剪/合并），生成占位图片
 						const origW = sprite.getOriginalWidth?.() ?? image.getWidth?.() ?? 0;
 						const origH = sprite.getOriginalHeight?.() ?? image.getHeight?.() ?? 0;
@@ -1252,13 +1294,13 @@ class RestoreWorkflow {
 							await this._mkdirForFile(placeholderPath);
 							try {
 								const data = await options.extractImage({
-									sourcePath: paddedAtlasPath,
+									sourcePath: workingAtlasPath,
 									outputPath: placeholderPath,
 									left: 0, top: 0, width: 0, height: 0,
 									rotated: false,
 									offsetX: 0, offsetY: 0,
-									expectedWidth: origW,
-									expectedHeight: origH,
+									expectedWidth: isScaled ? Math.round(origW * scaleX) : origW,
+									expectedHeight: isScaled ? Math.round(origH * scaleY) : origH,
 								});
 								await this._fs.writeFileRaw(placeholderPath, data);
 							} catch (placeholderError: any) {
@@ -1267,32 +1309,40 @@ class RestoreWorkflow {
 						}
 						continue;
 					}
-				const outputPath = this._resourceOutputPath(options.outputProjectPath, pkg, image, imageFileName(image));
-				const imageWidth = image.getWidth?.() ?? 0;
-				const imageHeight = image.getHeight?.() ?? 0;
-				const spriteWidth = sprite.getRotated() ? sprite.getRectHeight() : sprite.getRectWidth();
-				const spriteHeight = sprite.getRotated() ? sprite.getRectWidth() : sprite.getRectHeight();
-				await this._mkdirForFile(outputPath);
-				try {
-					await options.cropImage({
-						sourcePath: paddedAtlasPath,
-						outputPath,
-						left: sprite.getRectX(),
-						top: sprite.getRectY(),
-						width: sprite.getRectWidth(),
-						height: sprite.getRectHeight(),
-						rotated: sprite.getRotated(),
-						offsetX: sprite.getOffsetX(),
-						offsetY: sprite.getOffsetY(),
-						expectedWidth: Math.max(imageWidth, sprite.getOriginalWidth(), spriteWidth),
-						expectedHeight: Math.max(imageHeight, sprite.getOriginalHeight(), spriteHeight),
-					});
-				} catch (cropError: any) {
-					console.warn('[restore] Skipping sprite "' + (image.getName?.() ?? image.getItemId()) + '" rect=' + sprite.getRectX() + ',' + sprite.getRectY() + ' ' + sprite.getRectWidth() + 'x' + sprite.getRectHeight() + ': ' + (cropError?.message ?? cropError));
+					const outputPath = this._resourceOutputPath(options.outputProjectPath, pkg, image, imageFileName(image));
+					const imageWidth = image.getWidth?.() ?? 0;
+					const imageHeight = image.getHeight?.() ?? 0;
+					const spriteWidth = sprite.getRotated() ? coords.height : coords.width;
+					const spriteHeight = sprite.getRotated() ? coords.width : coords.height;
+					await this._mkdirForFile(outputPath);
+					try {
+						await options.cropImage({
+							sourcePath: workingAtlasPath,
+							outputPath,
+							left: coords.left,
+							top: coords.top,
+							width: coords.width,
+							height: coords.height,
+							rotated: sprite.getRotated(),
+							offsetX: isScaled ? Math.round(sprite.getOffsetX() * scaleX) : sprite.getOffsetX(),
+							offsetY: isScaled ? Math.round(sprite.getOffsetY() * scaleY) : sprite.getOffsetY(),
+							expectedWidth: Math.max(
+								isScaled ? Math.round(imageWidth * scaleX) : imageWidth,
+								isScaled ? Math.round(sprite.getOriginalWidth() * scaleX) : sprite.getOriginalWidth(),
+								spriteWidth,
+							),
+							expectedHeight: Math.max(
+								isScaled ? Math.round(imageHeight * scaleY) : imageHeight,
+								isScaled ? Math.round(sprite.getOriginalHeight() * scaleY) : sprite.getOriginalHeight(),
+								spriteHeight,
+							),
+						});
+					} catch (cropError: any) {
+						console.warn('[restore] Skipping sprite "' + (image.getName?.() ?? image.getItemId()) + '" rect=' + coords.left + ',' + coords.top + ' ' + coords.width + 'x' + coords.height + ': ' + (cropError?.message ?? cropError));
+					}
 				}
 			}
 		}
-	}
 
 	private async _copyLooseResources(
 		pkg: Package,
