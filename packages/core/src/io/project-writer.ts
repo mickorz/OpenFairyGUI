@@ -1638,6 +1638,11 @@ export class ProjectWriter {
 			writeXmlAttr(attrs, PROJECT_XML_PROTOCOL.list.attrs.xy, `${xyX},${xyY}`);
 			const [w, h] = [typedObj.getWidth?.() ?? 0, typedObj.getHeight?.() ?? 0];
 			if (w !== 0 || h !== 0) writeXmlAttr(attrs, PROJECT_XML_PROTOCOL.list.attrs.size, `${w},${h}`);
+			const [pivotX, pivotY] = [typedObj.getPivotX?.() ?? 0, typedObj.getPivotY?.() ?? 0];
+			if (pivotX !== 0 || pivotY !== 0) {
+				writeXmlAttr(attrs, PROJECT_XML_PROTOCOL.list.attrs.pivot, `${formatTrimmedFixed(pivotX, 3)},${formatTrimmedFixed(pivotY, 3)}`);
+				if (typedObj.getPivotAsAnchor?.()) writeXmlAttr(attrs, PROJECT_XML_PROTOCOL.list.attrs.anchor, 'true');
+			}
 		}
 		if (type === 'GLoader3D') {
 			writeXmlAttr(attrs, PROJECT_XML_PROTOCOL.loader3D.attrs.xy, `${xyX},${xyY}`);
