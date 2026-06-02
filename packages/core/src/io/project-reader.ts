@@ -2045,7 +2045,8 @@ export class ProjectReader {
 				const loaderPivot = readXmlAttr<string>(attrs, PROJECT_XML_PROTOCOL.loader.attrs.pivot);
 				if (loaderPivot) {
 					const [pivotX, pivotY] = parseXYString(loaderPivot);
-					g.setPivot(pivotX, pivotY);
+					const loaderAnchor = readXmlAttr<string | boolean>(attrs, PROJECT_XML_PROTOCOL.loader.attrs.anchor);
+					g.setPivot(pivotX, pivotY, parseBool(loaderAnchor));
 				}
 				const loaderScale = readXmlAttr<string>(attrs, PROJECT_XML_PROTOCOL.loader.attrs.scale);
 				if (loaderScale) {

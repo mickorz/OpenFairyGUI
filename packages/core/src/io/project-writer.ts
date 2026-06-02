@@ -1532,8 +1532,12 @@ export class ProjectWriter {
 			writeXmlAttr(attrs, PROJECT_XML_PROTOCOL.loader.attrs.xy, `${xyX},${xyY}`);
 			const [w, h] = [typedObj.getWidth?.() ?? 0, typedObj.getHeight?.() ?? 0];
 			if (w !== 0 || h !== 0) writeXmlAttr(attrs, PROJECT_XML_PROTOCOL.loader.attrs.size, `${w},${h}`);
+			if (typedObj.getGroup?.()) writeXmlAttr(attrs, PROJECT_XML_PROTOCOL.loader.attrs.group, typedObj.getGroup?.());
 			const [pivotX, pivotY] = [typedObj.getPivotX?.() ?? 0, typedObj.getPivotY?.() ?? 0];
-			if (pivotX !== 0 || pivotY !== 0) writeXmlAttr(attrs, PROJECT_XML_PROTOCOL.loader.attrs.pivot, `${formatTrimmedFixed(pivotX, 3)},${formatTrimmedFixed(pivotY, 3)}`);
+			if (pivotX !== 0 || pivotY !== 0) {
+				writeXmlAttr(attrs, PROJECT_XML_PROTOCOL.loader.attrs.pivot, `${formatTrimmedFixed(pivotX, 3)},${formatTrimmedFixed(pivotY, 3)}`);
+				if (typedObj.getPivotAsAnchor?.()) writeXmlAttr(attrs, PROJECT_XML_PROTOCOL.loader.attrs.anchor, 'true');
+			}
 			const [scaleX, scaleY] = [typedObj.getScaleX?.() ?? 1, typedObj.getScaleY?.() ?? 1];
 			if (scaleX !== 1 || scaleY !== 1) writeXmlAttr(attrs, PROJECT_XML_PROTOCOL.loader.attrs.scale, `${formatTrimmedFixed(scaleX, 3)},${formatTrimmedFixed(scaleY, 3)}`);
 			if (typedObj.getGrayed?.()) writeXmlAttr(attrs, PROJECT_XML_PROTOCOL.loader.attrs.grayed, 'true');
