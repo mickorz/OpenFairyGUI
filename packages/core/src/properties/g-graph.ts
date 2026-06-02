@@ -22,6 +22,8 @@ export interface IGGraph extends IGObject {
 	grayed: boolean;
 	skewX: number;
 	skewY: number;
+	scaleX: number;
+	scaleY: number;
 	graphType: number;
 	lineSize: number;
 	lineColor: string;
@@ -66,6 +68,8 @@ export class GGraph extends GObject<IGGraph, PropertyType.G_GRAPH> {
 			grayed: false,
 			skewX: 0,
 			skewY: 0,
+			scaleX: 1,
+			scaleY: 1,
 			graphType: GraphType.Empty,
 			lineSize: 1,
 			lineColor: '#000000',
@@ -126,6 +130,12 @@ export class GGraph extends GObject<IGGraph, PropertyType.G_GRAPH> {
 		return this.set('skewY', y);
 	}
 
+	public getScaleX(): number { return this.get('scaleX'); }
+	public getScaleY(): number { return this.get('scaleY'); }
+	public setScale(x: number, y: number): this {
+		this.set('scaleX', x);
+		return this.set('scaleY', y);
+	}
 	public getAlpha(): number { return this.get('alpha'); }
 	public setAlpha(v: number): this { return this.set('alpha', v); }
 

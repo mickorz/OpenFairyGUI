@@ -16,6 +16,11 @@ interface IGGroup extends IGObject {
 	layout: number;
 	lineGap: number;
 	columnGap: number;
+	pivotX: number;
+	pivotY: number;
+	anchor: boolean;
+	scaleX: number;
+	scaleY: number;
 	advanced: boolean;
 	excludeInvisibles: boolean;
 	autoSizeDisabled: boolean;
@@ -83,6 +88,12 @@ export class GGroup extends GObject<IGGroup, PropertyType.G_GROUP> {
 		this.set('pivotX', x);
 		this.set('pivotY', y);
 		return this.set('anchor', anchor);
+	}
+	public getScaleX(): number { return this.get('scaleX'); }
+	public getScaleY(): number { return this.get('scaleY'); }
+	public setScale(x: number, y: number): this {
+		this.set('scaleX', x);
+		return this.set('scaleY', y);
 	}
 	public setPivotAsAnchor(v: boolean): this { return this.set('anchor', v); }
 

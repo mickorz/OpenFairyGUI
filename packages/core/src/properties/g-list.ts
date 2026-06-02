@@ -63,6 +63,11 @@ export interface IListBase extends IGObject {
 	foldInvisibleItems: boolean;
 	listItems: GListItemData[];
 	pageController: string;
+	pivotX: number;
+	pivotY: number;
+	anchor: boolean;
+	scaleX: number;
+	scaleY: number;
 	controllerOverrides: string;
 	selectionController: string;
 }
@@ -119,6 +124,11 @@ export class GListBase<
 			scrollItemToViewOnClick: true,
 			foldInvisibleItems: false,
 			listItems: [] as GListItemData[],
+			pivotX: 0,
+			pivotY: 0,
+			anchor: false,
+			scaleX: 1,
+			scaleY: 1,
 			pageController: '',
 			controllerOverrides: '',
 			selectionController: '',
@@ -160,6 +170,12 @@ export class GListBase<
 		this.setListProp('pivotX', x);
 		this.setListProp('pivotY', y);
 		return this.setListProp('anchor', anchor);
+	}
+	public getScaleX(): number { return this.getListProp('scaleX'); }
+	public getScaleY(): number { return this.getListProp('scaleY'); }
+	public setScale(x: number, y: number): this {
+		this.setListProp('scaleX', x);
+		return this.setListProp('scaleY', y);
 	}
 	public setPivotAsAnchor(v: boolean): this { return this.setListProp('anchor', v); }
 

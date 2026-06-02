@@ -627,6 +627,7 @@ const GRAPH_NODE = defineNode(
 		RESTRICT_SIZE_ATTRS,
 		PIVOT_ATTRS,
 		ANCHOR_ATTRS,
+		SCALE_ATTRS,
 		GROUP_REF_ATTRS,
 		ROTATION_ALPHA_ATTRS,
 		VISIBLE_ATTRS,
@@ -641,6 +642,7 @@ const MOVIE_CLIP_NODE = defineNode(
 		MOVIE_CLIP_PANEL_ATTRS,
 		XY_SIZE_ATTRS,
 		PIVOT_ATTRS,
+		SCALE_ATTRS,
 		GROUP_REF_ATTRS,
 		ROTATION_ALPHA_ATTRS,
 		VISIBLE_ATTRS,
@@ -703,6 +705,7 @@ const TEXT_NODE = defineNode(
 		GROUP_REF_ATTRS,
 		TEXT_PANEL_ATTRS,
 		TEXT_INPUT_PANEL_ATTRS,
+		SCALE_ATTRS,
 	),
 	mergeChildren(WITH_RELATION_CHILDREN, WITH_GEAR_CHILDREN),
 );
@@ -710,7 +713,7 @@ const TEXT_NODE = defineNode(
 const TEXT_INPUT_NODE = defineNode(mergeAttrs(TEXT_INPUT_PANEL_ATTRS));
 
 const RICH_TEXT_NODE = defineNode(
-	mergeAttrs(RICH_TEXT_PANEL_ATTRS),
+	mergeAttrs(RICH_TEXT_PANEL_ATTRS, SCALE_ATTRS),
 	mergeChildren(WITH_RELATION_CHILDREN, WITH_GEAR_CHILDREN),
 );
 
@@ -723,6 +726,7 @@ const GROUP_NODE = defineNode(
 		GROUP_PANEL_ATTRS,
 		PIVOT_ATTRS,
 		ANCHOR_ATTRS,
+		SCALE_ATTRS,
 	),
 	// FairyGUI editor only exposes relation/gear channels on advanced groups.
 	// Protocol metadata stays static, so we keep the child set narrow here and
@@ -738,6 +742,7 @@ const LIST_NODE = defineNode(
 		LIST_PANEL_ATTRS,
 		PIVOT_ATTRS,
 		ANCHOR_ATTRS,
+		SCALE_ATTRS,
 	),
 	mergeChildren(
 		WITH_RELATION_CHILDREN,

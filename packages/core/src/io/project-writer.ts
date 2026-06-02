@@ -1474,6 +1474,8 @@ export class ProjectWriter {
 				writeXmlAttr(attrs, PROJECT_XML_PROTOCOL.graph.attrs.pivot, `${formatTrimmedFixed(pivotX, 3)},${formatTrimmedFixed(pivotY, 3)}`);
 				if (typedObj.getPivotAsAnchor?.()) writeXmlAttr(attrs, PROJECT_XML_PROTOCOL.graph.attrs.anchor, 'true');
 			}
+			const [graphScaleX, graphScaleY] = [typedObj.getScaleX?.() ?? 1, typedObj.getScaleY?.() ?? 1];
+			if (graphScaleX !== 1 || graphScaleY !== 1) writeXmlAttr(attrs, PROJECT_XML_PROTOCOL.graph.attrs.scale, `${formatTrimmedFixed(graphScaleX, 3)},${formatTrimmedFixed(graphScaleY, 3)}`);
 			if ((typedObj.getRotation?.() ?? 0) !== 0) writeXmlAttr(attrs, PROJECT_XML_PROTOCOL.graph.attrs.rotation, formatTrimmedFixed(typedObj.getRotation?.() ?? 0, 2));
 			if ((typedObj.getAlpha?.() ?? 1) !== 1) writeXmlAttr(attrs, PROJECT_XML_PROTOCOL.graph.attrs.alpha, formatDisplayAlpha(typedObj.getAlpha?.() ?? 1));
 			if (typedObj.getVisible?.() === false) writeXmlAttr(attrs, PROJECT_XML_PROTOCOL.graph.attrs.visible, 'false');
@@ -1523,6 +1525,8 @@ export class ProjectWriter {
 				writeXmlAttr(attrs, PROJECT_XML_PROTOCOL.group.attrs.pivot, `${formatTrimmedFixed(pivotX, 3)},${formatTrimmedFixed(pivotY, 3)}`);
 				if (typedObj.getPivotAsAnchor?.()) writeXmlAttr(attrs, PROJECT_XML_PROTOCOL.group.attrs.anchor, 'true');
 			}
+			const [scaleX, scaleY] = [typedObj.getScaleX?.() ?? 1, typedObj.getScaleY?.() ?? 1];
+			if (scaleX !== 1 || scaleY !== 1) writeXmlAttr(attrs, PROJECT_XML_PROTOCOL.group.attrs.scale, `${formatTrimmedFixed(scaleX, 3)},${formatTrimmedFixed(scaleY, 3)}`);
 		}
 		if (type === 'GLoader') {
 			writeXmlAttr(attrs, PROJECT_XML_PROTOCOL.loader.attrs.xy, `${xyX},${xyY}`);
@@ -1583,6 +1587,8 @@ export class ProjectWriter {
 			if (typedObj.getGroup?.()) writeXmlAttr(attrs, PROJECT_XML_PROTOCOL.movieClip.attrs.group, typedObj.getGroup?.());
 			const [pivotX, pivotY] = [typedObj.getPivotX?.() ?? 0, typedObj.getPivotY?.() ?? 0];
 			if (pivotX !== 0 || pivotY !== 0) writeXmlAttr(attrs, PROJECT_XML_PROTOCOL.movieClip.attrs.pivot, `${formatTrimmedFixed(pivotX, 3)},${formatTrimmedFixed(pivotY, 3)}`);
+				const [mcScaleX, mcScaleY] = [typedObj.getScaleX?.() ?? 1, typedObj.getScaleY?.() ?? 1];
+				if (mcScaleX !== 1 || mcScaleY !== 1) writeXmlAttr(attrs, PROJECT_XML_PROTOCOL.movieClip.attrs.scale, `${formatTrimmedFixed(mcScaleX, 3)},${formatTrimmedFixed(mcScaleY, 3)}`);
 			if ((typedObj.getRotation?.() ?? 0) !== 0) writeXmlAttr(attrs, PROJECT_XML_PROTOCOL.movieClip.attrs.rotation, formatTrimmedFixed(typedObj.getRotation?.() ?? 0, 2));
 			if ((typedObj.getAlpha?.() ?? 1) !== 1) writeXmlAttr(attrs, PROJECT_XML_PROTOCOL.movieClip.attrs.alpha, formatDisplayAlpha(typedObj.getAlpha?.() ?? 1));
 			if (typedObj.getVisible?.() === false) writeXmlAttr(attrs, PROJECT_XML_PROTOCOL.movieClip.attrs.visible, 'false');
@@ -1601,6 +1607,13 @@ export class ProjectWriter {
 			if (pivotX !== 0 || pivotY !== 0) {
 				writeXmlAttr(attrs, PROJECT_XML_PROTOCOL.text.attrs.pivot, `${formatTrimmedFixed(pivotX, 3)},${formatTrimmedFixed(pivotY, 3)}`);
 				if (typedObj.getPivotAsAnchor?.()) writeXmlAttr(attrs, PROJECT_XML_PROTOCOL.text.attrs.anchor, 'true');
+			}
+			const [scaleX, scaleY] = [typedObj.getScaleX?.() ?? 1, typedObj.getScaleY?.() ?? 1];
+			if (scaleX !== 1 || scaleY !== 1) {
+				const scaleSpec = type === 'GRichTextField'
+					? PROJECT_XML_PROTOCOL.richText.attrs.scale
+					: PROJECT_XML_PROTOCOL.text.attrs.scale;
+				writeXmlAttr(attrs, scaleSpec, `${formatTrimmedFixed(scaleX, 3)},${formatTrimmedFixed(scaleY, 3)}`);
 			}
 			const restrictSize = [
 				typedObj.getMinWidth?.() ?? 0,
@@ -1643,6 +1656,8 @@ export class ProjectWriter {
 				writeXmlAttr(attrs, PROJECT_XML_PROTOCOL.list.attrs.pivot, `${formatTrimmedFixed(pivotX, 3)},${formatTrimmedFixed(pivotY, 3)}`);
 				if (typedObj.getPivotAsAnchor?.()) writeXmlAttr(attrs, PROJECT_XML_PROTOCOL.list.attrs.anchor, 'true');
 			}
+			const [scaleX, scaleY] = [typedObj.getScaleX?.() ?? 1, typedObj.getScaleY?.() ?? 1];
+			if (scaleX !== 1 || scaleY !== 1) writeXmlAttr(attrs, PROJECT_XML_PROTOCOL.list.attrs.scale, `${formatTrimmedFixed(scaleX, 3)},${formatTrimmedFixed(scaleY, 3)}`);
 		}
 		if (type === 'GLoader3D') {
 			writeXmlAttr(attrs, PROJECT_XML_PROTOCOL.loader3D.attrs.xy, `${xyX},${xyY}`);

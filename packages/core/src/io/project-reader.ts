@@ -1652,6 +1652,11 @@ export class ProjectReader {
 					const textAnchor = readXmlAttr<string | boolean>(attrs, PROJECT_XML_PROTOCOL.text.attrs.anchor);
 					g.setPivot(pivotX, pivotY, parseBool(textAnchor));
 				}
+				const textScale = readXmlAttr<string>(attrs, PROJECT_XML_PROTOCOL.text.attrs.scale);
+				if (textScale) {
+					const [scaleX, scaleY] = parseXYString(textScale);
+					g.setScale(scaleX, scaleY);
+				}
 				const textRestrictSize = readXmlAttr<string>(attrs, PROJECT_XML_PROTOCOL.text.attrs.restrictSize);
 				if (textRestrictSize) {
 					const parts = textRestrictSize.split(',').map(Number);
@@ -1932,6 +1937,11 @@ export class ProjectReader {
 					const [pivotX, pivotY] = parseXYString(graphPivot);
 					const graphAnchor = readXmlAttr<string | boolean>(attrs, PROJECT_XML_PROTOCOL.graph.attrs.anchor);
 					g.setPivot(pivotX, pivotY, parseBool(graphAnchor));
+				}
+				const graphScale = readXmlAttr<string>(attrs, PROJECT_XML_PROTOCOL.graph.attrs.scale);
+				if (graphScale) {
+					const [scaleX, scaleY] = parseXYString(graphScale);
+					g.setScale(scaleX, scaleY);
 				}
 				const graphRotation = readXmlAttr<string | number>(attrs, PROJECT_XML_PROTOCOL.graph.attrs.rotation);
 				if (graphRotation !== undefined) g.setRotation(parseFloat2(graphRotation));

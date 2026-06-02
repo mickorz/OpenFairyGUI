@@ -18,6 +18,13 @@ export interface IGTextField extends IGObject {
 	grayed: boolean;
 	tooltips: string;
 	customData: string;
+	pivotX: number;
+	pivotY: number;
+	anchor: boolean;
+	scaleX: number;
+	scaleY: number;
+	skewX: number;
+	skewY: number;
 	text: string;
 	font: string;
 	fontSize: number;
@@ -84,6 +91,13 @@ export class GTextField<
 			grayed: false,
 			tooltips: '',
 			customData: '',
+			pivotX: 0,
+			pivotY: 0,
+			anchor: false,
+			scaleX: 1,
+			scaleY: 1,
+			skewX: 0,
+			skewY: 0,
 			text: '',
 			font: '',
 			fontSize: 12,
@@ -157,6 +171,12 @@ export class GTextField<
 		this.setTextFieldProp('pivotX', x);
 		this.setTextFieldProp('pivotY', y);
 		return this.setTextFieldProp('anchor', anchor);
+	}
+	public getScaleX(): number { return this.getTextFieldProp('scaleX'); }
+	public getScaleY(): number { return this.getTextFieldProp('scaleY'); }
+	public setScale(x: number, y: number): this {
+		this.setTextFieldProp('scaleX', x);
+		return this.setTextFieldProp('scaleY', y);
 	}
 	public setPivotAsAnchor(v: boolean): this { return this.setTextFieldProp('anchor', v); }
 

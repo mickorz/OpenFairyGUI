@@ -10,6 +10,8 @@ export interface IGMovieClip extends IGObject {
 	height: number;
 	pivotX: number;
 	pivotY: number;
+	scaleX: number;
+	scaleY: number;
 	group: string;
 	alpha: number;
 	rotation: number;
@@ -45,6 +47,8 @@ export class GMovieClip extends GObject<IGMovieClip, PropertyType.G_MOVIE_CLIP> 
 			height: 0,
 			pivotX: 0,
 			pivotY: 0,
+			scaleX: 1,
+			scaleY: 1,
 			group: '',
 			alpha: 1,
 			rotation: 0,
@@ -84,6 +88,13 @@ export class GMovieClip extends GObject<IGMovieClip, PropertyType.G_MOVIE_CLIP> 
 	public setPivot(x: number, y: number): this {
 		this.set('pivotX' as any, x);
 		return this.set('pivotY' as any, y);
+	}
+
+	public getScaleX(): number { return this.get('scaleX' as any); }
+	public getScaleY(): number { return this.get('scaleY' as any); }
+	public setScale(x: number, y: number): this {
+		this.set('scaleX' as any, x);
+		return this.set('scaleY' as any, y);
 	}
 
 	public getGroup(): string { return this.get('group' as any); }
