@@ -1,55 +1,50 @@
 # OpenFairyGUI
 
-<p align="center"><img src="./docs/public/logo.svg" alt="OpenFairyGUI logo" width="160"></p>
-
-[![Documentation](https://img.shields.io/badge/docs-online-0f766e.svg)](https://fairygui.dev/)
-[![npm](https://img.shields.io/badge/npm-%40openfairygui%2Fcore-cb3837.svg)](https://www.npmjs.com/package/@openfairygui/core)
+[![npm core version](https://img.shields.io/npm/v/@openfairygui/core.svg)](https://www.npmjs.com/package/@openfairygui/core)
+[![npm cli version](https://img.shields.io/npm/v/@openfairygui/cli.svg)](https://www.npmjs.com/package/@openfairygui/cli)
 [![License](https://img.shields.io/badge/license-MIT-007ec6.svg)](./LICENSE)
+[![GitHub](https://img.shields.io/badge/github-OpenFairyGUI%2FOpenFairyGUI-24292e.svg)](https://github.com/OpenFairyGUI/OpenFairyGUI)
 
-[English](./README_EN.md) · [官网文档](https://fairygui.dev/) · [快速开始](https://fairygui.dev/guide/getting-started) · [API Reference](https://fairygui.dev/api/) · [更新日志](./CHANGELOG_CN.md)
+[English](./README_EN.md)
 
-> 用 TypeScript 读取、修改和发布 FairyGUI 工程，面向脚本、CI/CD 与智能体工具链。
+*面向 Node.js 与自动化工作流的 FairyGUI 工程 SDK。*
 
-> **与 FairyGUI 的关系：** OpenFairyGUI 是围绕 FairyGUI 工程格式与工具链开发的非官方开源项目，并非 FairyGUI 官方产品。“FairyGUI”名称、Logo 及相关品牌标识的权利归其权利人所有；官方产品与信息请访问 [FairyGUI 官网](https://fairygui.com/)。
+## 介绍
 
-## OpenFairyGUI 是什么
+OpenFairyGUI 用于读取、编辑、写回和发布 FairyGUI 工程数据。和编辑器侧“所见即所得”的交互式工作流不同，OpenFairyGUI 更适合脚本化、批处理、生成式工具链和 CI/CD 场景。
 
-OpenFairyGUI 是一个面向 Node.js 和自动化工作流的 FairyGUI 工程 SDK。它把工程读写、文档变换、发布以及后端会话能力拆分为可组合的 TypeScript 包，同时提供 CLI 与 MCP 接入方式。
+它当前覆盖的核心能力包括：
 
-公共 authoring 以可序列化、可验证的 UAM transaction 为稳定入口；`Document` / Property Graph 是供协议读写和底层工作流使用的可变低层 API，不提供与 UAM 相同的事务不变量。
+- 读取和写入 FairyGUI 工程目录
+- 读取和写入发布二进制包
+- 通过代码检查、修改和转换文档模型
+- 从发布目录重建可继续编辑的 FairyGUI 工程
+- 为自动化流程提供可脚本调用的 CLI
 
-它适合：
+## 包结构
 
-- 批量检查或修改 FairyGUI 工程
-- 在构建流水线中发布运行时资源
-- 为生成式工具、在线编辑器或智能体提供工程能力
-- 分析 Project XML 与 FairyGUI 二进制包
+本仓库采用 `pnpm workspace` + `Lerna` 的 monorepo 组织方式，当前包含以下包：
 
-## 主要能力
-
-| 能力 | 说明 |
+| 包 | 作用 |
 |---|---|
-| 工程读写 | 读取、修改并写回 `.fairy` 工程目录与资源 |
-| 二进制协议 | 读取和写入 `.fui` / `_fui.bytes` 发布包 |
-| Headless authoring | 通过 `Document` 或 UAM transaction 批量修改工程 |
-| 工程验证 | 检查工程读取、UAM 约束、引用、路径冲突与可用资源字节 |
-| 发布与恢复 | 发布运行时资源，并从可信本地产物执行受限恢复 |
-| 工具集成 | 提供 CLI、stateful backend runtime 与 MCP adapter |
+| `@openfairygui/core` | 属性图、文档模型、工程读写、二进制读写等底层能力 |
+| `@openfairygui/functions` | 发布、还原、检查、转换等高层函数能力 |
+| `@openfairygui/cli` | 命令行工具 |
+| `@openfairygui/test-utils` | 测试辅助与夹具 |
 
-## 快速开始
+## Scripting API
 
 安装脚本侧包：
 
 ```bash
-npm install @openfairygui/core @openfairygui/functions
+npm install --save @openfairygui/core @openfairygui/functions
 ```
 
-读取并发布一个工程：
+典型用法是先读入工程，再基于 `Document` 做变换、发布或写回：
 
 ```ts
-import { NodeIO } from '@openfairygui/core/node';
-import { inspect } from '@openfairygui/functions';
-import { publishNode } from '@openfairygui/functions/node';
+import { NodeIO } from '@openfairygui/core';
+import { inspect, publish } from '@openfairygui/functions';
 
 const io = new NodeIO();
 const doc = await io.readProject('./MyProject/MyProject.fairy');
@@ -57,78 +52,128 @@ const doc = await io.readProject('./MyProject/MyProject.fairy');
 const report = inspect(doc);
 console.log(report.projectType, report.totals.packages);
 
-await publishNode({
-  document: doc,
-  assetsPath: './MyProject/assets',
+await doc.transform(publish({
   output: './release',
+}));
+```
+
+如果你更关心“发布产物 -> 工程”的恢复链路，也可以直接调用 `functions` 层的 restore workflow：
+
+```ts
+import { ProjectType } from '@openfairygui/core';
+import { restore } from '@openfairygui/functions';
+import fs from 'node:fs/promises';
+import path from 'node:path';
+
+await restore({
+  inputDir: './release',
+  output: './restored-project',
+  projectType: ProjectType.Unity,
+  fs: {
+    async readFile(filePath) { return fs.readFile(filePath, 'utf-8'); },
+    async readFileRaw(filePath) {
+      const buf = await fs.readFile(filePath);
+      return new Uint8Array(buf.buffer, buf.byteOffset, buf.byteLength);
+    },
+    async writeFile(filePath, content) {
+      await fs.mkdir(path.dirname(filePath), { recursive: true });
+      await fs.writeFile(filePath, content, 'utf-8');
+    },
+    async writeFileRaw(filePath, data) {
+      await fs.mkdir(path.dirname(filePath), { recursive: true });
+      await fs.writeFile(filePath, data);
+    },
+    async mkdir(dirPath) { await fs.mkdir(dirPath, { recursive: true }); },
+    async readdir(dirPath) { return fs.readdir(dirPath); },
+    async exists(filePath) { try { await fs.access(filePath); return true; } catch { return false; } },
+    async isFile(filePath) { try { return (await fs.stat(filePath)).isFile(); } catch { return false; } },
+    async resolvePath(filePath) { try { return await fs.realpath(filePath); } catch { return path.resolve(filePath); } },
+    async rm(targetPath, options) { await fs.rm(targetPath, { recursive: options?.recursive ?? false, force: options?.force ?? false }); },
+    join: path.join,
+    dirname: path.dirname,
+  },
 });
 ```
 
-完整的工程写回、Web 入口和 UAM 示例见[快速开始](https://fairygui.dev/guide/getting-started)。
+## Command-line API
 
-## 命令行
+安装 CLI：
 
 ```bash
 npm install --global @openfairygui/cli
-
-ofgui inspect ./MyProject
-ofgui validate ./MyProject
-ofgui publish ./MyProject --output ./release
 ```
 
-运行 `ofgui --help` 查看全部命令和选项。
+查看帮助：
 
-## 包导航
+```bash
+ofgui --help
+```
 
-| 包 | 用途 |
+常见用法：
+
+```bash
+# 检查工程
+ofgui inspect ./MyProject
+
+# 发布工程
+ofgui publish ./MyProject --output ./release
+
+# 按命令覆盖项目类型
+ofgui publish ./MyProject --output ./release --project-type unity
+
+# 从发布目录恢复工程
+ofgui restore ./release --output ./restored-project
+
+# 恢复时覆盖项目类型
+ofgui restore ./release --output ./restored-project --project-type cocoscreator
+```
+
+`--project-type` 支持名称或数字 id，例如：
+
+| 传值 | 含义 |
 |---|---|
-| [`@openfairygui/core`](https://www.npmjs.com/package/@openfairygui/core) | 文档模型、工程读写与二进制协议 |
-| [`@openfairygui/functions`](https://www.npmjs.com/package/@openfairygui/functions) | 检查、变换、发布与恢复流程 |
-| [`@openfairygui/backend`](https://www.npmjs.com/package/@openfairygui/backend) | session、revision、save 与 capability runtime |
-| [`@openfairygui/cli`](https://www.npmjs.com/package/@openfairygui/cli) | 命令行工具 |
-| [`@openfairygui/mcp`](https://www.npmjs.com/package/@openfairygui/mcp) | backend runtime 的 MCP 薄适配层 |
+| `unity` / `0` | Unity |
+| `cocoscreator` / `cocos` / `3` | Cocos Creator |
+| `layabox` / `laya` / `4` | LayaBox |
 
-包入口和 Node / Web 边界见[包与工具](https://fairygui.dev/guide/packages)。
+## Workspace Development
 
-## 推荐项目
-
-### FairyGUI Editor Online
-
-[FairyGUI Editor Online](https://editor.fairygui.dev/) 是基于 OpenFairyGUI 构建的浏览器端 FairyGUI 工程编辑器，支持从本地文件夹或 ZIP 导入工程，并在浏览器中编辑、保存、发布与预览。
-
-[在线体验](https://editor.fairygui.dev/) · [GitHub 仓库](https://github.com/OpenFairyGUI/FairyGUI-Editor-Online)
-
-## 文档
-
-- [快速开始](https://fairygui.dev/guide/getting-started)
-- [API Reference](https://fairygui.dev/api/)
-- [架构与包边界](./docs/architecture-overview.md)
-- [工程验证](./docs/project-validation.md)
-- [编辑器发布设置](./docs/editor-publish-settings.md)
-- [Project XML 属性协议](./docs/project-xml-attribute-reference.md)
-- [FairyGUI 二进制包格式](./docs/fairygui-binary-package-format.md)
-- [全部文档](./docs/README.md)
-- [English documentation](./docs/en/README.md)
-
-## 当前状态与边界
-
-项目当前维护 `0.2.x` 稳定线与 `0.3.x` 预发布线；0.x API 仍可能继续演进，版本变化以[更新日志](./CHANGELOG_CN.md)为准。
-
-- Node.js 自动化流程是当前主要使用方式；浏览器宿主使用明确的 `/web` 入口和注入能力。
-- UAM 无法保真写回时会拒绝保存，不会静默覆盖源工程。
-- `restore` 只用于可信的本地发布产物，不是常规创作流程。
-
-详细限制以[官网文档](https://fairygui.dev/)中的当前实现口径为准。
-
-## 本地开发
+如果你是在仓库内直接开发，而不是从 npm 安装，常用命令如下：
 
 ```bash
 pnpm install
 pnpm build
 pnpm test
-pnpm lint
+pnpm dev:cli --help
 ```
+
+| 命令 | 说明 |
+|---|---|
+| `pnpm build` | 构建全部工作区包 |
+| `pnpm build:cli-deps` | 构建 CLI 依赖的核心包 |
+| `pnpm build:watch` | 监听模式持续构建 |
+| `pnpm test` | 运行 AVA 测试 |
+| `pnpm coverage` | 运行测试并生成覆盖率报告 |
+| `pnpm lint` | 运行 Biome lint |
+| `pnpm dev:cli` | 以开发模式运行 CLI |
+
+## 文档
+
+当前实现口径文档以中文维护，入口见 [docs/README.md](./docs/README.md)。
+
+| 文档 | 说明 |
+|---|---|
+| [架构图说明](./docs/architecture-overview.md) | 包职责、模块边界、核心数据流 |
+| [编辑器发布设置](./docs/editor-publish-settings.md) | 发布设置来源、默认值、命名规则与消费位置 |
+| [发布产物还原限制](./docs/published-project-restore-limitations.md) | 仅凭发布目录重建工程时的能力边界 |
+| [Project XML 属性协议](./docs/project-xml-attribute-reference.md) | `package.xml`、`component.xml` 及结构节点属性协议 |
+| [Project XML DisplayList Tag 对齐](./docs/project-xml-displaylist-variants.md) | `displayList` XML tag 与 editor 类型对齐口径 |
+| [二进制封包协议](./docs/fairygui-binary-package-format.md) | `.fui` / `_fui.bytes` 当前协议说明 |
+
+## 当前状态
+
+项目仍处于积极开发阶段。当前 API 与包内容应视为现行实现，而不是长期兼容承诺。
 
 ## License
 
-[MIT](./LICENSE)
+MIT

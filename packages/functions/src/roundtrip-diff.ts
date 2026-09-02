@@ -1,0 +1,698 @@
+import fs from 'node:fs/promises';
+import path from 'node:path';
+import { XMLParser } from 'fast-xml-parser';
+
+// restore 后必定不同的属性，对比时跳过
+// fileName: restore 通过 src 反解析出文件路径，源文件不包含此冗余信息
+// group/idnum: restore 后引用 ID 重新生成
+// selected: 二进制格式不保留控制器选中页面，restore 总是设为 0
+// 以下为二进制格式不保留的元数据属性（发布时丢失，非 restore 问题）:
+// locked/advanced/exported: 编辑器锁定/高级/导出标记
+// initName: 自定义初始名称
+// filter/filterData: 过滤器效果
+// scrollBar/restrictSize/scroll: 滚动相关配置
+// bgColorEnabled/bgColor: 背景色设置
+// designImage*: 设计辅助图层（仅编辑器可见）
+// underlaySoftness/faceDilate/strokeSize: TextMeshPro 专有属性
+const IGNORED_ATTRS = new Set([
+	'id', 'group', 'idnum', 'fileName', 'selected',
+	'locked', 'advanced', 'exported', 'initName',
+	'filter', 'filterData',
+	'scrollBar', 'restrictSize', 'scroll',
+	'bgColorEnabled', 'bgColor',
+	'designImageAlpha', 'designImageLayer', 'designImageOffsetX', 'designImageOffsetY',
+	'underlaySoftness', 'faceDilate', 'strokeSize',
+]);
+
+// 数值比较容差
+const NUMERIC_TOLERANCE = 0.01;
+
+// 源有显式默认值但还原省略了（或反过来）的属性，视为一致
+const DEFAULT_VALUE_MAP: Record<string, string> = {
+	selected: '0',
+	playing: 'true',
+	visible: 'true',
+	touchable: 'true',
+	exported: 'false',
+	grayed: 'false',
+	checked: 'false',
+	opaque: 'true',
+	aspect: 'true',
+	margin: '0,0,0,0',
+	fillOrigin: '0',
+	fillAmount: '100',
+	input: 'true',
+	// tween=true 且 ease/duration 缺失时的默认缓动配置
+	ease: 'Quad.Out',
+	duration: '0.3',
+};
+
+// 标签名等价映射: 源文件使用 movieclip，restore 输出使用 jta
+// text/inputtext: FairyGUI 编辑器对输入文本框可能使用 text，restore 使用 inputtext
+const TAG_EQUIVALENTS: Record<string, string> = {
+	movieclip: 'jta',
+	jta: 'movieclip',
+	text: 'inputtext',
+	inputtext: 'text',
+};
+
+// 不参与对比的包描述文件
+const SKIPPED_XML_FILES = new Set(['package.xml', 'package_branch.xml']);
+
+// 扩展定义元素标签 - 当为空（无属性）时不参与对比
+// 源文件在所有属性为默认值时省略这些元素，restore 总是输出
+const EXTENSION_TAGS = new Set(['Button', 'Label', 'Slider', 'ProgressBar', 'ScrollBar',
+	'ScrollPane', 'Tree', 'List', 'ComboBox', 'ProgressBar', 'GearXY']);
+
+// 二进制格式不保留的元素，对比时跳过
+// 二进制格式限制说明:
+// - 非 advanced 的 GGroup 纯粹是编辑器的视觉分组容器，不写入二进制
+// - displayList 内容全为非 advanced group 时，整个 displayList 为空（cosmetic）
+// - transition item 引用的目标元素不存在时，二进制正确丢弃该 item（stale ref）
+// - component-level relation 已在编码器中支持，此处仅为兜底
+const BINARY_FORMAT_SKIP_RULES = {
+	// 非 advanced 的 group（没有 layout/overflow 等运行时行为）
+	isPlainGroup: (node: any): boolean => {
+		if (typeof node !== 'object') return false;
+		const attrs = node[':@'];
+		if (!attrs) return true; // 无属性 = 空元素 = 纯分组
+		return !attrs.advanced;
+	},
+	// 空的 displayList（内容全部被过滤）
+	isEmptyDisplayList: (children: any[]): boolean => {
+		return children.every(c => {
+			if (typeof c !== 'object') return true;
+			const keys = Object.keys(c).filter(k => k !== ':@');
+			// 检查是否是 group 标签且为非 advanced
+			return keys.length === 1 && keys[0] === 'group'
+				&& asArray(c.group).every((g: any) => BINARY_FORMAT_SKIP_RULES.isPlainGroup(g));
+		});
+	},
+};
+
+export interface DiffEntry {
+	package: string;
+	component: string;
+	path: string;
+	expected: string;
+	actual: string;
+	type: 'attribute_mismatch' | 'missing_element' | 'extra_element';
+}
+
+export interface DiffReport {
+	summary: {
+		totalFiles: number;
+		matchingFiles: number;
+		diffFiles: number;
+		missingFiles: number;
+	};
+	diffs: DiffEntry[];
+	missingInRestored: string[];
+	extraInRestored: string[];
+}
+
+function isNumericClose(a: string, b: string): boolean {
+	const numA = parseFloat(a);
+	const numB = parseFloat(b);
+	if (isNaN(numA) || isNaN(numB)) return false;
+	return Math.abs(numA - numB) < NUMERIC_TOLERANCE;
+}
+
+// ui:// 引用去掉包 ID 部分，只比较资源 ID
+function stripPackageIdFromUiRef(value: string): string {
+	if (!value.startsWith('ui://') || value.length <= 13) return value;
+	return value.slice(13);
+}
+
+// 布尔值等价表: "true"/"1" 和 "false"/"0" 视为一致
+const BOOL_EQ: Record<string, string> = { 'true': '1', '1': 'true', 'false': '0', '0': 'false' };
+
+// 值等价表: restore 使用的规范化名称 vs 源文件使用的原始名称
+const VALUE_EQUIVS: Record<string, string> = {
+	'eclipse': 'ellipse', 'ellipse': 'eclipse',
+	'regular_polygon': 'regularpolygon', 'regularpolygon': 'regular_polygon',
+	'width': 'width-width', 'width-width': 'width',
+	'height': 'height-height', 'height-height': 'height',
+};
+
+function valueSegmentMatch(a: string, b: string): boolean {
+	if (a === b) return true;
+	if (BOOL_EQ[a] === b) return true;
+	if (VALUE_EQUIVS[a] === b) return true;
+	return false;
+}
+
+function valuesMatch(expected: string, actual: string): boolean {
+	if (expected === actual) return true;
+	if (isNumericClose(expected, actual)) return true;
+
+	// 逗号/管道分隔值逐段比较（如 sidePair, gear values）
+	if ((expected.includes(',') || expected.includes('|')) && (actual.includes(',') || actual.includes('|'))) {
+		const eParts = expected.split(/[|,]/);
+		const aParts = actual.split(/[|,]/);
+		if (eParts.length === aParts.length) {
+			return eParts.every((e, i) => {
+				const eTrim = e.trim(), aTrim = aParts[i].trim();
+				return eTrim === aTrim || isNumericClose(eTrim, aTrim) || valueSegmentMatch(eTrim, aTrim);
+			});
+		}
+	}
+
+	// 布尔值等价比较
+	if (BOOL_EQ[expected] === actual) return true;
+
+	// 值名称等价比较
+	if (VALUE_EQUIVS[expected] === actual) return true;
+
+	// 颜色值大小写不敏感
+	if (expected.startsWith('#') && actual.startsWith('#') && expected.length === actual.length) {
+		return expected.toLowerCase() === actual.toLowerCase();
+	}
+
+	// ui:// 引用只比较资源 ID 部分
+	if (expected.startsWith('ui://') && actual.startsWith('ui://')) {
+		return stripPackageIdFromUiRef(expected) === stripPackageIdFromUiRef(actual);
+	}
+
+	return false;
+}
+
+function createParser(): XMLParser {
+	return new XMLParser({
+		ignoreAttributes: false,
+		attributeNamePrefix: '',
+		attributesGroupName: ':@',
+	});
+}
+
+// 获取节点的唯一标识（用于匹配源和还原的对应节点）
+// 优先用 name/id，其次用 target（用于过渡项匹配）
+function getNodeKey(node: any): string | null {
+	const attrs = node[':@'];
+	if (!attrs) return null;
+	return attrs.name || attrs.id || attrs.target || null;
+}
+
+// 将子节点统一为数组
+function asArray(value: any): any[] {
+	if (value == null) return [];
+	if (Array.isArray(value)) return value;
+	return [value];
+}
+
+// 递归对比两个解析后的 XML 节点
+// fast-xml-parser 将空标签如 <Button/> 解析为 "" 或非对象值，需要跳过
+function diffNodes(
+	sourceNode: any,
+	restoredNode: any,
+	context: { pkg: string; comp: string; path: string },
+	diffs: DiffEntry[],
+): void {
+	// 非对象节点（空标签如 <Button/> 解析为 ""）无需对比属性和子节点
+	if (typeof sourceNode !== 'object' || typeof restoredNode !== 'object') return;
+
+	const sourceAttrs = sourceNode[':@'] ?? {};
+	const restoredAttrs = restoredNode[':@'] ?? {};
+
+	// 对比属性
+	const allAttrKeys = new Set([...Object.keys(sourceAttrs), ...Object.keys(restoredAttrs)]);
+	for (const key of allAttrKeys) {
+		if (IGNORED_ATTRS.has(key)) continue;
+
+		const sourceVal = String(sourceAttrs[key] ?? '');
+		const restoredVal = String(restoredAttrs[key] ?? '');
+
+		if (!valuesMatch(sourceVal, restoredVal)) {
+			// 检查是否为默认值差异（任一端为空，另一端为默认值）
+			const defaultVal = DEFAULT_VALUE_MAP[key];
+			const isSourceOmission = sourceVal === '' && restoredVal === defaultVal;
+			const isRestoredOmission = restoredVal === '' && sourceVal === defaultVal;
+			if (!isSourceOmission && !isRestoredOmission) {
+				diffs.push({
+					package: context.pkg,
+					component: context.comp,
+					path: `${context.path}.${key}`,
+					expected: sourceVal,
+					actual: restoredVal,
+					type: 'attribute_mismatch',
+				});
+			}
+		}
+	}
+
+	// 收集子节点键（排除 :@）
+	const sourceKeys = Object.keys(sourceNode).filter((k) => k !== ':@');
+	const restoredKeys = new Set(Object.keys(restoredNode).filter((k) => k !== ':@'));
+
+	for (const tag of sourceKeys) {
+		const sourceChildren = asArray(sourceNode[tag]);
+		// 支持标签名等价: movieclip <-> jta, text <-> inputtext
+		// 合并直接匹配和等价匹配的子节点
+		const equivTag = TAG_EQUIVALENTS[tag];
+		const directChildren = restoredKeys.has(tag) ? asArray(restoredNode[tag]) : [];
+		const equivChildren = equivTag && restoredKeys.has(equivTag) ? asArray(restoredNode[equivTag]) : [];
+		const restoredChildren = [...directChildren, ...equivChildren];
+
+		// 扩展定义标签全为空元素时跳过（源文件可能省略，restore 总是输出）
+		if (EXTENSION_TAGS.has(tag)
+			&& sourceChildren.every(c => typeof c !== 'object' || (c[':@'] && Object.keys(c[':@']).length === 0) || !c[':@'])
+			&& restoredChildren.every(c => typeof c !== 'object' || (c[':@'] && Object.keys(c[':@']).length === 0) || !c[':@'])) {
+			continue;
+		}
+
+		if (restoredChildren.length === 0 && sourceChildren.length > 0) {
+			// 二进制格式限制: 空 displayList 还原端省略（cosmetic）
+			if (tag === 'displayList' && BINARY_FORMAT_SKIP_RULES.isEmptyDisplayList(sourceChildren)) {
+				continue;
+			}
+			for (const child of sourceChildren) {
+				// 二进制格式限制: 非 advanced 的 group 不写入二进制
+				if (tag === 'group' && BINARY_FORMAT_SKIP_RULES.isPlainGroup(child)) continue;
+				const key = getNodeKey(child);
+				const childPath = key ? `${context.path}/${tag}[@${key}]` : `${context.path}/${tag}`;
+				diffs.push({
+					package: context.pkg,
+					component: context.comp,
+					path: childPath,
+					expected: '<element>',
+					actual: '<missing>',
+					type: 'missing_element',
+				});
+			}
+			continue;
+		}
+
+		// 按 name/id 匹配，无标识时按顺序匹配
+		const unmatchedRestored = [...restoredChildren];
+		for (const sourceChild of sourceChildren) {
+			const sourceKey = getNodeKey(sourceChild);
+			let matched: any = null;
+			let matchedIndex = -1;
+
+			if (sourceKey) {
+				matchedIndex = unmatchedRestored.findIndex((r) => getNodeKey(r) === sourceKey);
+			} else {
+				// 无 name/id 时按顺序取第一个未匹配的
+				matchedIndex = 0;
+			}
+
+			if (matchedIndex >= 0 && matchedIndex < unmatchedRestored.length) {
+				matched = unmatchedRestored[matchedIndex];
+				unmatchedRestored.splice(matchedIndex, 1);
+			}
+
+			const childPath = sourceKey
+				? `${context.path}/${tag}[@${sourceKey}]`
+				: `${context.path}/${tag}`;
+
+			if (matched === null) {
+				diffs.push({
+					package: context.pkg,
+					component: context.comp,
+					path: childPath,
+					expected: '<element>',
+					actual: '<missing>',
+					type: 'missing_element',
+				});
+				continue;
+			}
+
+			diffNodes(sourceChild, matched, { ...context, path: childPath }, diffs);
+		}
+
+		// 还原端多余的子节点
+		for (const extra of unmatchedRestored) {
+			const key = getNodeKey(extra);
+			const childPath = key ? `${context.path}/${tag}[@${key}]` : `${context.path}/${tag}`;
+			diffs.push({
+				package: context.pkg,
+				component: context.comp,
+				path: childPath,
+				expected: '<missing>',
+				actual: '<element>',
+				type: 'extra_element',
+			});
+		}
+	}
+
+	// 还原端有但源没有的标签（跳过等价标签）
+	for (const tag of restoredKeys) {
+		if (sourceKeys.includes(tag)) continue;
+		const equivTag = TAG_EQUIVALENTS[tag];
+		if (equivTag && sourceKeys.includes(equivTag)) continue;
+			// 空扩展定义元素跳过
+			if (EXTENSION_TAGS.has(tag)) continue;
+			const restoredChildren = asArray(restoredNode[tag]);
+		for (const child of restoredChildren) {
+			const key = getNodeKey(child);
+			const childPath = key ? `${context.path}/${tag}[@${key}]` : `${context.path}/${tag}`;
+			diffs.push({
+				package: context.pkg,
+				component: context.comp,
+				path: childPath,
+				expected: '<missing>',
+				actual: '<element>',
+				type: 'extra_element',
+			});
+		}
+	}
+}
+
+function diffXmlContent(
+	sourceXml: string,
+	restoredXml: string,
+	context: { pkg: string; comp: string },
+): DiffEntry[] {
+	const parser = createParser();
+	const sourceParsed = parser.parse(sourceXml);
+	const restoredParsed = parser.parse(restoredXml);
+
+	// 默认模式：parsed = { component: { ":@": {...}, ... } }
+	// 取第一个非 PI 键的内容
+	const getRoot = (parsed: any): any => {
+		const keys = Object.keys(parsed).filter((k) => !k.startsWith('?'));
+		return keys.length > 0 ? parsed[keys[0]] : null;
+	};
+
+	const sourceRoot = getRoot(sourceParsed);
+	const restoredRoot = getRoot(restoredParsed);
+
+	if (!sourceRoot || !restoredRoot) return [];
+
+	const diffs: DiffEntry[] = [];
+	diffNodes(sourceRoot, restoredRoot, { ...context, path: context.comp }, diffs);
+
+	// 过滤: transition item 引用的目标元素在源文件中不存在（stale ref）
+	// 源文件可能有残留的 transition item 引用了已被删除的元素，还原正确丢弃了它们
+	const displayListIds = new Set<string>();
+	collectDisplayListIds(sourceRoot, displayListIds);
+	return diffs.filter(d => {
+		if (d.type !== 'missing_element') return true;
+		// transition 下的 item，检查 target 对应的元素是否存在
+		const transItemMatch = d.path.match(/\/transition\[@(\w+)\]\/item\[@(\w+)\]/);
+		if (transItemMatch) {
+			const targetId = transItemMatch[2];
+			// item 的 key 是 target，如果 target 不在 displayList 中就是 stale ref
+			return displayListIds.has(targetId);
+		}
+		return true;
+	});
+}
+
+// 从解析后的 XML 节点中收集 displayList 下所有元素的 id
+function collectDisplayListIds(node: any, ids: Set<string>): void {
+	if (typeof node !== 'object' || !node) return;
+	const dl = node.displayList;
+	if (dl) {
+		const children = asArray(dl);
+		for (const child of children) {
+			if (typeof child !== 'object') continue;
+			const attrs = child[':@'];
+			if (attrs?.id) ids.add(attrs.id);
+		}
+	}
+	// 递归进入 displayList 中的子组件
+	for (const key of Object.keys(node)) {
+		if (key === ':@' || key === 'displayList') continue;
+		const val = node[key];
+		if (Array.isArray(val)) {
+			for (const item of val) collectDisplayListIds(item, ids);
+		} else if (typeof val === 'object' && val) {
+			collectDisplayListIds(val, ids);
+		}
+	}
+}
+
+// 递归收集目录下所有 .xml 文件
+async function collectXmlFiles(
+	dir: string,
+	base = '',
+): Promise<Array<{ fullPath: string; relative: string }>> {
+	const results: Array<{ fullPath: string; relative: string }> = [];
+	let entries: import('node:fs').Dirent[];
+	try {
+		entries = await fs.readdir(dir, { withFileTypes: true });
+	} catch {
+		return results;
+	}
+
+	for (const entry of entries) {
+		const fullPath = path.join(dir, entry.name);
+		const relative = base ? `${base}/${entry.name}` : entry.name;
+		if (entry.isDirectory()) {
+			const sub = await collectXmlFiles(fullPath, relative);
+			results.push(...sub);
+		} else if (entry.isFile() && entry.name.endsWith('.xml') && !SKIPPED_XML_FILES.has(entry.name)) {
+			results.push({ fullPath, relative });
+		}
+	}
+	return results;
+}
+
+export async function diffXmlProjects(sourceDir: string, restoredDir: string): Promise<DiffReport> {
+	const diffs: DiffEntry[] = [];
+	const missingInRestored: string[] = [];
+	const extraInRestored: string[] = [];
+
+	// 扫描源目录下的所有子目录（每个是一个包）
+	const sourceEntries = await fs.readdir(sourceDir, { withFileTypes: true });
+	const sourcePackages = new Map<string, string>();
+	for (const entry of sourceEntries) {
+		if (entry.isDirectory()) {
+			sourcePackages.set(entry.name, path.join(sourceDir, entry.name));
+		}
+	}
+
+	// 扫描还原目录
+	const restoredEntries = await fs.readdir(restoredDir, { withFileTypes: true });
+	const restoredPackages = new Map<string, string>();
+	for (const entry of restoredEntries) {
+		if (entry.isDirectory()) {
+			restoredPackages.set(entry.name, path.join(restoredDir, entry.name));
+		}
+	}
+
+	let totalFiles = 0;
+	let matchingFiles = 0;
+	let diffFiles = 0;
+	let missingFiles = 0;
+
+	// 遍历每个源包
+	for (const [pkgName, pkgDir] of sourcePackages) {
+		const sourceFiles = await collectXmlFiles(pkgDir);
+		const restoredPkgDir = restoredPackages.get(pkgName);
+
+		for (const sourceFile of sourceFiles) {
+			totalFiles++;
+			const relativePath = `${pkgName}/${sourceFile.relative}`;
+
+			if (!restoredPkgDir) {
+				missingInRestored.push(relativePath);
+				missingFiles++;
+				continue;
+			}
+
+			const restoredFilePath = path.join(restoredPkgDir, sourceFile.relative);
+			let restoredXml: string;
+			try {
+				restoredXml = await fs.readFile(restoredFilePath, 'utf-8');
+			} catch {
+				missingInRestored.push(relativePath);
+				missingFiles++;
+				continue;
+			}
+
+			const sourceXml = await fs.readFile(sourceFile.fullPath, 'utf-8');
+			const fileDiffs = diffXmlContent(sourceXml, restoredXml, {
+				pkg: pkgName,
+				comp: sourceFile.relative,
+			});
+
+			if (fileDiffs.length > 0) {
+				diffs.push(...fileDiffs);
+				diffFiles++;
+			} else {
+				matchingFiles++;
+			}
+		}
+	}
+
+	// 检查还原端多余的文件
+	for (const [pkgName, pkgDir] of restoredPackages) {
+		if (!sourcePackages.has(pkgName)) {
+			const restoredFiles = await collectXmlFiles(pkgDir);
+			for (const f of restoredFiles) {
+				extraInRestored.push(`${pkgName}/${f.relative}`);
+			}
+			continue;
+		}
+
+		const sourceFiles = await collectXmlFiles(sourcePackages.get(pkgName)!);
+		const sourceRelatives = new Set(sourceFiles.map((f) => f.relative));
+		const restoredFiles = await collectXmlFiles(pkgDir);
+		for (const f of restoredFiles) {
+			if (!sourceRelatives.has(f.relative)) {
+				extraInRestored.push(`${pkgName}/${f.relative}`);
+			}
+		}
+	}
+
+	return {
+		summary: {
+			totalFiles,
+			matchingFiles,
+			diffFiles,
+			missingFiles,
+		},
+		diffs,
+		missingInRestored,
+		extraInRestored,
+	};
+}
+
+// ========== 图片对比 ==========
+
+const IMAGE_EXTENSIONS = new Set(['.png', '.jpg', '.jpeg', '.webp']);
+
+export interface ImageDiffEntry {
+	package: string;
+	file: string;
+	type: 'missing_image' | 'size_mismatch';
+	expectedWidth?: number;
+	expectedHeight?: number;
+	actualWidth?: number;
+	actualHeight?: number;
+}
+
+export interface ImageDiffReport {
+	summary: {
+		totalImages: number;
+		matchingImages: number;
+		missingImages: number;
+		sizeMismatches: number;
+	};
+	diffs: ImageDiffEntry[];
+}
+
+export type ImageSizeReader = (filePath: string) => Promise<{ width: number; height: number } | null>;
+
+async function collectImageFiles(
+	dir: string,
+	base = '',
+): Promise<Array<{ fullPath: string; relative: string }>> {
+	const results: Array<{ fullPath: string; relative: string }> = [];
+	let entries: import('node:fs').Dirent[];
+	try {
+		entries = await fs.readdir(dir, { withFileTypes: true });
+	} catch {
+		return results;
+	}
+	for (const entry of entries) {
+		const fullPath = path.join(dir, entry.name);
+		const relative = base ? `${base}/${entry.name}` : entry.name;
+		if (entry.isDirectory()) {
+			const sub = await collectImageFiles(fullPath, relative);
+			results.push(...sub);
+		} else if (entry.isFile() && IMAGE_EXTENSIONS.has(path.extname(entry.name).toLowerCase())) {
+			results.push({ fullPath, relative });
+		}
+	}
+	return results;
+}
+
+function candidateRestoredPaths(sourceRelative: string): string[] {
+	const candidates = [sourceRelative];
+	const dotIdx = sourceRelative.lastIndexOf('.');
+	if (dotIdx >= 0) {
+		const ext = sourceRelative.substring(dotIdx).toLowerCase();
+		const base = sourceRelative.substring(0, dotIdx);
+		if (ext !== '.png') {
+			candidates.push(base + '.png');
+		}
+		if (ext === '.jpg' || ext === '.jpeg') {
+			const innerDot = base.lastIndexOf('.');
+			if (innerDot >= 0) {
+				const innerExt = base.substring(innerDot).toLowerCase();
+				if (IMAGE_EXTENSIONS.has(innerExt)) {
+					candidates.push(base);
+				}
+			}
+		}
+	}
+	return candidates;
+}
+
+export async function diffImageProjects(
+	sourceDir: string,
+	restoredDir: string,
+	getImageSize: ImageSizeReader,
+): Promise<ImageDiffReport> {
+	const diffs: ImageDiffEntry[] = [];
+
+	const sourcePackages = await fs.readdir(sourceDir, { withFileTypes: true });
+	const restoredPackages = new Map<string, string>();
+	for (const entry of await fs.readdir(restoredDir, { withFileTypes: true })) {
+		if (entry.isDirectory()) restoredPackages.set(entry.name, path.join(restoredDir, entry.name));
+	}
+
+	let totalImages = 0;
+	let matchingImages = 0;
+	let missingImages = 0;
+	let sizeMismatches = 0;
+
+	for (const srcEntry of sourcePackages) {
+		if (!srcEntry.isDirectory()) continue;
+		const pkgName = srcEntry.name;
+		const srcPkgDir = path.join(sourceDir, pkgName);
+		const restoredPkgDir = restoredPackages.get(pkgName);
+		const srcImages = await collectImageFiles(srcPkgDir);
+
+		for (const img of srcImages) {
+			totalImages++;
+			const relativePath = `${pkgName}/${img.relative}`;
+
+			if (!restoredPkgDir) {
+				diffs.push({ package: pkgName, file: img.relative, type: 'missing_image' });
+				missingImages++;
+				continue;
+			}
+
+			let restoredSize: { width: number; height: number } | null = null;
+			for (const candidate of candidateRestoredPaths(img.relative)) {
+				const tryPath = path.join(restoredPkgDir, candidate);
+				try {
+					const size = await getImageSize(tryPath);
+					if (size) { restoredSize = size; break; }
+				} catch { /* try next candidate */ }
+			}
+			if (!restoredSize) {
+				diffs.push({ package: pkgName, file: img.relative, type: 'missing_image' });
+				missingImages++;
+				continue;
+			}
+
+			const srcSize = await getImageSize(img.fullPath);
+			if (!srcSize) continue;
+
+			if (srcSize.width !== restoredSize.width || srcSize.height !== restoredSize.height) {
+				diffs.push({
+					package: pkgName,
+					file: img.relative,
+					type: 'size_mismatch',
+					expectedWidth: srcSize.width,
+					expectedHeight: srcSize.height,
+					actualWidth: restoredSize.width,
+					actualHeight: restoredSize.height,
+				});
+				sizeMismatches++;
+			} else {
+				matchingImages++;
+			}
+		}
+	}
+
+	return {
+		summary: { totalImages, matchingImages, missingImages, sizeMismatches },
+		diffs,
+	};
+}

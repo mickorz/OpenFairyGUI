@@ -2,8 +2,7 @@
  * Current version of the package.
  * @hidden
  */
-declare const __OPENFAIRYGUI_PACKAGE_VERSION__: string | undefined;
-export const VERSION: string = `v${typeof __OPENFAIRYGUI_PACKAGE_VERSION__ === 'string' ? __OPENFAIRYGUI_PACKAGE_VERSION__ : '0.0.0-dev'}`;
+export const VERSION: string = `v${(import.meta as Record<string, any>).env?.PACKAGE_VERSION ?? '0.0.0-dev'}`;
 
 /** @internal */
 export const NAME = '@openfairygui/core';
@@ -32,7 +31,6 @@ export enum PropertyType {
 	SOUND_RESOURCE = 'SoundResource',
 	FONT_RESOURCE = 'FontResource',
 	MOVIE_CLIP_RESOURCE = 'MovieClipResource',
-	SWF_RESOURCE = 'SwfResource',
 	SPINE_RESOURCE = 'SpineResource',
 	DRAGON_BONES_RESOURCE = 'DragonBonesResource',
 	COMPONENT = 'Component',

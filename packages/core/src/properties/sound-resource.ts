@@ -10,7 +10,6 @@ interface ISoundResource extends IExtensibleProperty {
 	branchItemIds: string[];
 	file: string;
 	exported: boolean;
-	favorite: boolean;
 	soundData: Ref<FairyBuffer>;
 }
 
@@ -33,7 +32,6 @@ export class SoundResource extends ExtensibleProperty<ISoundResource> {
 			branchItemIds: [],
 			file: '',
 			exported: false,
-			favorite: false,
 			soundData: null,
 		});
 	}
@@ -56,13 +54,6 @@ export class SoundResource extends ExtensibleProperty<ISoundResource> {
 	public getExported(): boolean { return this.get('exported'); }
 	public setExported(v: boolean): this { return this.set('exported', v); }
 
-	public getFavorite(): boolean { return this.get('favorite'); }
-	public setFavorite(v: boolean): this { return this.set('favorite', v); }
-
 	public getSoundData(): FairyBuffer | null { return this.getRef('soundData' as never) as FairyBuffer | null; }
 	public setSoundData(buffer: FairyBuffer | null): this { return this.setRef('soundData' as never, buffer as never); }
-
-	/** Primary source-file bytes for this sound resource. */
-	public getSourceData(): FairyBuffer | null { return this.getSoundData(); }
-	public setSourceData(buffer: FairyBuffer | null): this { return this.setSoundData(buffer); }
 }

@@ -14,19 +14,14 @@ export {
 	ensureArray,
 } from './xml-utils.js';
 export {
-	applyDerivedMovieClipModel,
-	deriveMovieClipModel,
-	deriveMovieClipModelFromJta,
+	maxRectsPack,
+	type PackInput,
+	type PackResult,
+	type PackerOptions,
+} from './max-rects.js';
+export {
 	parseJta,
-	type DerivedMovieClipFrame,
-	type DerivedMovieClipModel,
 	type JtaDef,
 	type JtaFrame,
 	type JtaTexture,
 } from './jta-parser.js';
-export {
-	probeRasterImage,
-	type RasterImageFormat,
-	type RasterImageInfo,
-} from './image-info.js';
-export { validateSafeSvgSource } from './svg-validation.js';

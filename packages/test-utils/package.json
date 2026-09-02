@@ -1,7 +1,6 @@
 {
 	"name": "@openfairygui/test-utils",
-	"version": "0.3.0",
-	"private": true,
+	"version": "0.1.1",
 	"description": "FairyGUI Headless Authoring SDK — test utilities and fixtures.",
 	"author": "OpenFairyGUI Contributors",
 	"license": "MIT",
@@ -13,9 +12,6 @@
 	"homepage": "https://github.com/OpenFairyGUI/OpenFairyGUI#readme",
 	"bugs": {
 		"url": "https://github.com/OpenFairyGUI/OpenFairyGUI/issues"
-	},
-	"engines": {
-		"node": ">=20"
 	},
 	"type": "module",
 	"sideEffects": false,

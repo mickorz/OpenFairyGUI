@@ -1,7 +1,7 @@
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 import { PlatformIO } from './platform-io.js';
-import type { FileSystem } from './file-system.js';
+import type { FileSystem } from './project-reader.js';
 
 /**
  * Node.js I/O implementation for reading and writing FairyGUI projects.
@@ -9,7 +9,7 @@ import type { FileSystem } from './file-system.js';
  * Usage:
  *
  * ```ts
- * import { NodeIO } from '@openfairygui/core/node';
+ * import { NodeIO } from '@openfairygui/core';
  *
  * const io = new NodeIO();
  * const doc = await io.readProject('./path/to/project.fairy');
@@ -40,9 +40,7 @@ export class NodeIO extends PlatformIO {
 			},
 			async readdir(dirPath: string): Promise<string[]> {
 				const entries = await fs.readdir(dirPath, { withFileTypes: true });
-				const symlink = entries.find((entry) => entry.isSymbolicLink());
-				if (symlink) throw new Error(`Symbolic links are not supported in project directories: ${path.join(dirPath, symlink.name)}`);
-				return entries.filter((entry) => entry.isDirectory()).map((entry) => entry.name);
+				return entries.filter((e) => e.isDirectory()).map((e) => e.name);
 			},
 			async exists(filePath: string): Promise<boolean> {
 				try {
@@ -51,12 +49,6 @@ export class NodeIO extends PlatformIO {
 				} catch {
 					return false;
 				}
-			},
-			async unlink(filePath: string): Promise<void> {
-				await fs.unlink(filePath);
-			},
-			async rmdir(dirPath: string): Promise<void> {
-				await fs.rmdir(dirPath);
 			},
 			join(...paths: string[]): string {
 				return path.join(...paths);

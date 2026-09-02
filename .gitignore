@@ -24,9 +24,6 @@ coverage/
 .nyc_output/
 .turbo/
 *.tsbuildinfo
-docs/.vitepress/cache/
-docs/.vitepress/dist/
-docs/public/api/
 
 # OS files
 .DS_Store
@@ -37,6 +34,19 @@ Thumbs.db
 .env.*
 !.env.example
 
+# Debug scripts
+debug_*.mjs
+
+# Restore output
+output/
+output*/
+skipped_sprites.txt
+
 # AI agent
 AGENTS.md
 .omx
+.agents/
+.codex/
+
+# TestProject
+TestProject

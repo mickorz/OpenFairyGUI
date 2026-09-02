@@ -396,8 +396,7 @@ test('project XML protocol covers selected tag attrs across fixture samples', as
 		collectAllowedAttrNames('packagePublish'),
 	);
 	await assertPackageResourceAttrsCovered(t, 'sound', collectAllowedAttrNames('packageResource'));
-	await assertPackageResourceAttrsCovered(t, 'folder', collectAllowedAttrNames('packageResourceFolder'));
-	await assertPackageResourceAttrsCovered(t, 'movieclip', collectAllowedAttrNames('packageResource', 'packageMovieClipResource'));
+	await assertPackageResourceAttrsCovered(t, 'movieclip', collectAllowedAttrNames('packageResource'));
 	await assertRootComponentAttrsCovered(t, collectAllowedAttrNames('componentRoot'));
 	await assertNestedComponentAttrsCovered(t, collectAllowedAttrNames('displayObject', 'componentInstance'));
 	await assertTagAttrsCovered(t, 'Button', collectAllowedAttrNames('buttonExtension'));
@@ -456,14 +455,11 @@ test('project XML protocol children maps stay explicit and stable', (t) => {
 			'packageDescription',
 			'packageFontResource',
 			'packageImageResource',
-			'packageMovieClipResource',
 			'packagePublish',
 			'packagePublishAtlas',
 			'packageResource',
-			'packageResourceFolder',
 			'packageSkeletonResource',
 			'progressBarExtension',
-			'propertyOverride',
 			'relation',
 			'richText',
 			'scrollBarExtension',
@@ -484,7 +480,6 @@ test('project XML protocol children maps stay explicit and stable', (t) => {
 		'ScrollBar',
 		'Slider',
 		'controller',
-		'customProperty',
 		'transition',
 	]);
 	t.deepEqual(collectChildNames('componentInstance'), [
@@ -504,7 +499,6 @@ test('project XML protocol children maps stay explicit and stable', (t) => {
 		'gearSize',
 		'gearText',
 		'gearXY',
-		'property',
 		'relation',
 	]);
 	t.deepEqual(collectChildNames('image'), [
@@ -621,12 +615,10 @@ test('project XML protocol children maps stay explicit and stable', (t) => {
 		'item',
 		'relation',
 	]);
-	t.deepEqual(collectChildNames('listItem'), ['property']);
-	t.deepEqual(collectChildNames('controller'), ['action', 'remark']);
+	t.deepEqual(collectChildNames('controller'), ['action']);
 	t.deepEqual(collectChildNames('transition'), ['item']);
 	t.deepEqual(collectChildNames('comboBoxExtension'), ['item']);
 	t.deepEqual(collectChildNames('buttonExtension'), []);
-	t.deepEqual(collectChildNames('propertyOverride'), []);
 	t.deepEqual(collectChildNames('relation'), []);
 	t.deepEqual(collectContainerNames('componentRoot'), ['displayList']);
 	t.deepEqual(collectContainerNames('componentInstance'), []);

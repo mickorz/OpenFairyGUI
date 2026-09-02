@@ -1,8 +1,7 @@
-import { RefList, type Ref } from 'property-graph';
+import { RefList } from 'property-graph';
 import { type Nullable, PropertyType } from '../constants.js';
 import { ExtensibleProperty, type IExtensibleProperty } from './extensible-property.js';
 import type { FontGlyph } from './font-glyph.js';
-import type { FairyBuffer } from './buffer.js';
 
 interface IFontResource extends IExtensibleProperty {
 	id: string;
@@ -12,7 +11,6 @@ interface IFontResource extends IExtensibleProperty {
 	fileName: string;
 	textureId: string;
 	exported: boolean;
-	favorite: boolean;
 	renderMode: string;
 	samplePointSize: number;
 	ttf: boolean;
@@ -23,7 +21,6 @@ interface IFontResource extends IExtensibleProperty {
 	xAdvance: number;
 	lineHeight: number;
 	glyphs: RefList<FontGlyph>;
-	sourceData: Ref<FairyBuffer>;
 }
 
 /**
@@ -46,7 +43,6 @@ export class FontResource extends ExtensibleProperty<IFontResource> {
 			fileName: '',
 			textureId: '',
 			exported: false,
-			favorite: false,
 			renderMode: '',
 			samplePointSize: 0,
 			ttf: false,
@@ -57,7 +53,6 @@ export class FontResource extends ExtensibleProperty<IFontResource> {
 			xAdvance: 0,
 			lineHeight: 0,
 			glyphs: new RefList<FontGlyph>(),
-			sourceData: null,
 		});
 	}
 
@@ -81,9 +76,6 @@ export class FontResource extends ExtensibleProperty<IFontResource> {
 
 	public getExported(): boolean { return this.get('exported'); }
 	public setExported(v: boolean): this { return this.set('exported', v); }
-
-	public getFavorite(): boolean { return this.get('favorite'); }
-	public setFavorite(v: boolean): this { return this.set('favorite', v); }
 
 	public getRenderMode(): string { return this.get('renderMode'); }
 	public setRenderMode(v: string): this { return this.set('renderMode', v); }
@@ -115,8 +107,4 @@ export class FontResource extends ExtensibleProperty<IFontResource> {
 	public addGlyph(glyph: FontGlyph): this { return this.addRef('glyphs', glyph); }
 	public removeGlyph(glyph: FontGlyph): this { return this.removeRef('glyphs', glyph); }
 	public listGlyphs(): FontGlyph[] { return this.listRefs('glyphs'); }
-
-	/** Primary source-file bytes for this font resource. */
-	public getSourceData(): FairyBuffer | null { return this.getRef('sourceData' as never) as FairyBuffer | null; }
-	public setSourceData(buffer: FairyBuffer | null): this { return this.setRef('sourceData' as never, buffer as never); }
 }

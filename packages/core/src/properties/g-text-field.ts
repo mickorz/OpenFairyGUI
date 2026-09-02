@@ -6,9 +6,6 @@ export interface IGTextField extends IGObject {
 	y: number;
 	width: number;
 	height: number;
-	pivotX: number;
-	pivotY: number;
-	anchor: boolean;
 	minWidth: number;
 	maxWidth: number;
 	minHeight: number;
@@ -21,6 +18,13 @@ export interface IGTextField extends IGObject {
 	grayed: boolean;
 	tooltips: string;
 	customData: string;
+	pivotX: number;
+	pivotY: number;
+	anchor: boolean;
+	scaleX: number;
+	scaleY: number;
+	skewX: number;
+	skewY: number;
 	text: string;
 	font: string;
 	fontSize: number;
@@ -35,7 +39,6 @@ export interface IGTextField extends IGObject {
 	demoText: string;
 	templateVarsEnabled: boolean;
 	faceDilate: number;
-	outlineSoftness: number;
 	underlaySoftness: number;
 	ubbEnabled: boolean;
 	underline: boolean;
@@ -76,9 +79,6 @@ export class GTextField<
 			y: 0,
 			width: 0,
 			height: 0,
-			pivotX: 0,
-			pivotY: 0,
-			anchor: false,
 			minWidth: 0,
 			maxWidth: 0,
 			minHeight: 0,
@@ -91,6 +91,13 @@ export class GTextField<
 			grayed: false,
 			tooltips: '',
 			customData: '',
+			pivotX: 0,
+			pivotY: 0,
+			anchor: false,
+			scaleX: 1,
+			scaleY: 1,
+			skewX: 0,
+			skewY: 0,
 			text: '',
 			font: '',
 			fontSize: 12,
@@ -105,7 +112,6 @@ export class GTextField<
 			demoText: '',
 			templateVarsEnabled: false,
 			faceDilate: 0,
-			outlineSoftness: 0,
 			underlaySoftness: 0,
 			ubbEnabled: false,
 			underline: false,
@@ -165,6 +171,12 @@ export class GTextField<
 		this.setTextFieldProp('pivotX', x);
 		this.setTextFieldProp('pivotY', y);
 		return this.setTextFieldProp('anchor', anchor);
+	}
+	public getScaleX(): number { return this.getTextFieldProp('scaleX'); }
+	public getScaleY(): number { return this.getTextFieldProp('scaleY'); }
+	public setScale(x: number, y: number): this {
+		this.setTextFieldProp('scaleX', x);
+		return this.setTextFieldProp('scaleY', y);
 	}
 	public setPivotAsAnchor(v: boolean): this { return this.setTextFieldProp('anchor', v); }
 
@@ -230,9 +242,6 @@ export class GTextField<
 
 	public getFaceDilate(): number { return this.getTextFieldProp('faceDilate'); }
 	public setFaceDilate(v: number): this { return this.setTextFieldProp('faceDilate', v); }
-
-	public getOutlineSoftness(): number { return this.getTextFieldProp('outlineSoftness'); }
-	public setOutlineSoftness(v: number): this { return this.setTextFieldProp('outlineSoftness', v); }
 
 	public getUnderlaySoftness(): number { return this.getTextFieldProp('underlaySoftness'); }
 	public setUnderlaySoftness(v: number): this { return this.setTextFieldProp('underlaySoftness', v); }

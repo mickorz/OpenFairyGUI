@@ -1,7 +1,5 @@
-import type { Ref } from 'property-graph';
 import type { Nullable } from '../constants.js';
 import { ExtensibleProperty, type IExtensibleProperty } from './extensible-property.js';
-import type { FairyBuffer } from './buffer.js';
 
 export interface ISkeletonResourceBase extends IExtensibleProperty {
 	id: string;
@@ -10,14 +8,12 @@ export interface ISkeletonResourceBase extends IExtensibleProperty {
 	branchItemIds: string[];
 	file: string;
 	exported: boolean;
-	favorite: boolean;
 	width: number;
 	height: number;
 	requireIds: string[];
 	atlasNames: string[];
 	anchorX: number;
 	anchorY: number;
-	sourceData: Ref<FairyBuffer>;
 }
 
 /**
@@ -33,14 +29,12 @@ export abstract class SkeletonResourceBase<T extends ISkeletonResourceBase> exte
 			branchItemIds: [],
 			file: '',
 			exported: false,
-			favorite: false,
 			width: 0,
 			height: 0,
 			requireIds: [],
 			atlasNames: [],
 			anchorX: 0,
 			anchorY: 0,
-			sourceData: null,
 		}) as Nullable<T>;
 	}
 
@@ -61,9 +55,6 @@ export abstract class SkeletonResourceBase<T extends ISkeletonResourceBase> exte
 
 	public getExported(): boolean { return this.get('exported' as never) as boolean; }
 	public setExported(v: boolean): this { return this.set('exported' as never, v as never); }
-
-	public getFavorite(): boolean { return this.get('favorite' as never) as boolean; }
-	public setFavorite(v: boolean): this { return this.set('favorite' as never, v as never); }
 
 	public getWidth(): number { return this.get('width' as never) as number; }
 	public setWidth(v: number): this { return this.set('width' as never, v as never); }
@@ -87,8 +78,4 @@ export abstract class SkeletonResourceBase<T extends ISkeletonResourceBase> exte
 		this.setAnchorX(x);
 		return this.setAnchorY(y);
 	}
-
-	/** Primary source-file bytes for this skeleton resource. */
-	public getSourceData(): FairyBuffer | null { return this.getRef('sourceData' as never) as FairyBuffer | null; }
-	public setSourceData(buffer: FairyBuffer | null): this { return this.setRef('sourceData' as never, buffer as never); }
 }

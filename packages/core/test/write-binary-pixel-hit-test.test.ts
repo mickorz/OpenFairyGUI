@@ -4,8 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { ByteBuffer } from '../src/io/byte-buffer.js';
 import { FGUI_MAGIC } from '../src/constants.js';
-import { Document } from '../src/index.js';
-import { NodeIO } from '../src/node.js';
+import { NodeIO, Document } from '../src/index.js';
 
 test('binary writer: emits pixel hit test block when image resource provides pixel hit test data', async (t) => {
 	const doc = new Document();

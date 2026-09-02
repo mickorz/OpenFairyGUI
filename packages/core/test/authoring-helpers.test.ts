@@ -7,11 +7,11 @@ import {
 	ControllerActionType,
 	Document,
 	GearType,
+	NodeIO,
 	TransitionActionType,
 	composeController,
 	composeTransition,
 } from '../src/index.js';
-import { NodeIO } from '../src/node.js';
 
 function createProjectDocument(projectId: string): Document {
 	const doc = new Document();
@@ -64,11 +64,6 @@ test('composeController assembles pages/actions, attaches to the component, and 
 	const controller = composeController(doc, component, {
 		name: 'state',
 		selectedIndex: 1,
-		autoRadioGroupDepth: true,
-		alias: 'Shared state',
-		exported: true,
-		homePageType: 'specific',
-		homePage: '1',
 		pages: [
 			{ id: '0', name: 'Idle' },
 			{ id: '1', name: 'Active' },
@@ -99,11 +94,6 @@ test('composeController assembles pages/actions, attaches to the component, and 
 
 	t.truthy(controller2, 'controller should survive round-trip');
 	t.is(controller2?.getSelectedIndex(), 1);
-	t.true(controller2?.getAutoRadioGroupDepth());
-	t.is(controller2?.getAlias(), 'Shared state');
-	t.true(controller2?.getExported());
-	t.is(controller2?.getHomePageType(), 'specific');
-	t.is(controller2?.getHomePage(), '1');
 	t.deepEqual(controller2?.listPages().map((page) => ({ id: page.getId(), name: page.getName() })), [
 		{ id: '0', name: 'Idle' },
 		{ id: '1', name: 'Active' },

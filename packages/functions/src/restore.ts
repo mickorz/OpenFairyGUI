@@ -3,22 +3,10 @@ import {
 	type Document,
 	type FileSystem,
 	generateId,
-	type Package,
 	ProjectType,
 	ProjectWriter,
+	type Package,
 } from '@openfairygui/core';
-import {
-	assertRestoreOutputDir,
-	basename,
-	commitRestoreOutput,
-	createRestoreStagingDir,
-	isPathWithin,
-	normalizeRestoreOutputDir,
-	resolveOutputProjectPath,
-	trimTrailingSlashes,
-} from './restore-internals/output-transaction.js';
-import { serializeFont, type RestorableFontGlyph } from './restore-internals/font.js';
-import { serializeMovieClip, type RestorableMovieFrame } from './restore-internals/movie-clip.js';
 
 export interface RestoreImageCropInput {
 	sourcePath: string;
@@ -41,10 +29,16 @@ export type RestoreImageExtractor = (input: RestoreImageExtractInput) => Promise
 interface RestoreExecutionOptions {
 	binaryPaths: string[];
 	sourceDir: string;
+	sourceDirs: string[];
 	outputProjectPath: string;
 	projectType?: number;
 	cropImage?: RestoreImageCropper;
 	extractImage?: RestoreImageExtractor;
+	getImageSize?: (filePath: string) => Promise<{ width: number; height: number } | null>;
+	padImage?: (sourcePath: string, outputPath: string, width: number, height: number) => Promise<void>;
+	upscaleImage?: (sourcePath: string, outputPath: string, width: number, height: number) => Promise<void>;
+	fontDir?: string;
+	langDir?: string;
 }
 
 export interface RestoreResult {
@@ -57,8 +51,7 @@ export interface RestoreFileSystem extends Pick<FileSystem, 'readFile' | 'readFi
 	readdir(path: string): Promise<string[]>;
 	isFile(path: string): Promise<boolean>;
 	resolvePath(path: string): string | Promise<string>;
-	rm(path: string, options?: { recursive?: boolean; force?: boolean }): Promise<void>;
-	rename(from: string, to: string): Promise<void>;
+	rm?: (path: string, options?: { recursive?: boolean; force?: boolean }) => Promise<void>;
 }
 
 export interface RestoreOptions {
@@ -70,7 +63,27 @@ export interface RestoreOptions {
 	projectType?: number;
 	cropImage?: RestoreImageCropper;
 	extractImage?: RestoreImageExtractor;
+	getImageSize?: (filePath: string) => Promise<{ width: number; height: number } | null>;
+	padImage?: (sourcePath: string, outputPath: string, width: number, height: number) => Promise<void>;
+	upscaleImage?: (sourcePath: string, outputPath: string, width: number, height: number) => Promise<void>;
+	fontDir?: string;
+	langDir?: string;
 }
+
+export interface FontInfo {
+	packageName: string;
+	resourceId: string;
+	fontName: string;
+	fileName: string;
+	relativeOutputPath: string;
+}
+
+export interface ListMissingFontsOptions {
+	inputDir: string;
+	fs: RestoreFileSystem;
+	packages?: string[];
+}
+
 
 type RestorableResource = ReturnType<Package['listResources']>[number] & {
 	propertyType: string;
@@ -132,6 +145,29 @@ interface RestorableSprite {
 	getOriginalHeight(): number;
 }
 
+interface RestorableMovieFrame {
+	getRectX(): number;
+	getRectY(): number;
+	getRectWidth(): number;
+	getRectHeight(): number;
+	getAddDelay(): number;
+	getSpriteId(): string;
+}
+
+interface RestorableFontGlyph {
+	getAdvance(): number;
+	getChannel(): number;
+	getChar(): string;
+	getCharId(): number;
+	getHeight(): number;
+	getImg(): string;
+	getWidth(): number;
+	getX(): number;
+	getXOffset(): number;
+	getY(): number;
+	getYOffset(): number;
+}
+
 type RestorableFontResource = RestorableResource & {
 	listGlyphs(): RestorableFontGlyph[];
 	getBranch?(): string;
@@ -153,6 +189,9 @@ interface RestorableDisplayObject {
 	setFont?(font: string): unknown;
 }
 
+const JTA_FILE_MARK = 'yytou';
+const JTA_VERSION = 102;
+const JTA_DEFAULT_FPS = 24;
 const TRANSPARENT_PNG_1X1 = Uint8Array.from([
 	137, 80, 78, 71, 13, 10, 26, 10,
 	0, 0, 0, 13, 73, 72, 68, 82,
@@ -165,23 +204,10 @@ const TRANSPARENT_PNG_1X1 = Uint8Array.from([
 	66, 96, 130,
 ]);
 
-function assertSafeRestoreSegment(value: string, label: string): void {
-	if (!value || value === '.' || value === '..' || value.includes('\0') || /[\\/:]/u.test(value)) {
-		throw new Error(`restore: Invalid ${label} "${value}".`);
-	}
-}
-
 function normalizeVirtualPath(path: string | undefined): string {
-	const raw = (path ?? '').trim();
-	if (!raw || raw === '/') return '';
-	if (raw.includes('\0') || raw.startsWith('\\') || raw.startsWith('//') || /^[a-z]:/iu.test(raw)) {
-		throw new Error(`restore: Invalid resource path "${raw}".`);
-	}
-	const segments = raw.replace(/\\/g, '/').split('/').filter(Boolean);
-	if (segments.some((segment) => segment === '.' || segment === '..' || segment.includes(':'))) {
-		throw new Error(`restore: Invalid resource path "${raw}".`);
-	}
-	return segments.join('/');
+	const normalized = (path ?? '').replace(/\\/g, '/').trim();
+	if (!normalized || normalized === '/') return '';
+	return normalized.replace(/^\/+/, '').replace(/\/+$/, '');
 }
 
 function resourceFileName(resource: RestorableResource): string {
@@ -332,10 +358,64 @@ function imageFileName(resource: RestorableResource): string {
 	return fileName;
 }
 
+
 function findImageResource(pkg: Package, itemId: string): RestorableResource | null {
 	return (pkg.listResources() as RestorableResource[]).find((resource) => {
 		return resource.propertyType === 'ImageResource' && resource.getId?.() === itemId;
 	}) ?? null;
+}
+
+function fontGlyphCharId(glyph: RestorableFontGlyph): number {
+	const charId = glyph.getCharId();
+	if (charId > 0) return charId;
+	const char = glyph.getChar();
+	return char ? (char.codePointAt(0) ?? 0) : 0;
+}
+
+function scaledFrameDelay(milliseconds: number): number {
+	return milliseconds <= 0 ? 0 : Math.max(1, Math.round(milliseconds / (1000 / JTA_DEFAULT_FPS)));
+}
+
+function jtaSpeed(interval: number): number {
+	return interval <= 0 ? 1 : Math.max(1, Math.round(interval / (1000 / JTA_DEFAULT_FPS)));
+}
+
+function writeInt16(value: number): Uint8Array {
+	const data = new Uint8Array(2);
+	new DataView(data.buffer).setInt16(0, value);
+	return data;
+}
+
+function writeUint16(value: number): Uint8Array {
+	const data = new Uint8Array(2);
+	new DataView(data.buffer).setUint16(0, value);
+	return data;
+}
+
+function writeInt32(value: number): Uint8Array {
+	const data = new Uint8Array(4);
+	new DataView(data.buffer).setInt32(0, value);
+	return data;
+}
+
+function writeByte(value: number): Uint8Array {
+	return new Uint8Array([value & 0xff]);
+}
+
+function concatBytes(chunks: Uint8Array[]): Uint8Array {
+	const length = chunks.reduce((total, chunk) => total + chunk.byteLength, 0);
+	const data = new Uint8Array(length);
+	let offset = 0;
+	for (const chunk of chunks) {
+		data.set(chunk, offset);
+		offset += chunk.byteLength;
+	}
+	return data;
+}
+
+function encodeJtaUtf(value: string): Uint8Array {
+	const bytes = new TextEncoder().encode(value);
+	return concatBytes([writeUint16(bytes.byteLength), bytes]);
 }
 
 function isPublishedBinaryFile(fileName: string): boolean {
@@ -348,76 +428,251 @@ function inferPackageName(fileName: string): string {
 	return fileName.replace(/\.bin$/i, '');
 }
 
+function trimTrailingSlashes(value: string): string {
+	return value.replace(/[/\\]+$/, '');
+}
+
+function normalizeComparablePath(value: string): string {
+	const normalized = trimTrailingSlashes(value).replace(/\\/g, '/');
+	const driveMatch = normalized.match(/^([a-z]:)(?:\/(.*))?$/i);
+	const drivePrefix = driveMatch?.[1].toLowerCase() ?? '';
+	const remainder = driveMatch ? (driveMatch[2] ?? '') : normalized;
+	const hasRoot = driveMatch ? true : remainder.startsWith('/');
+	const rawSegments = remainder.split('/').filter((segment) => segment.length > 0);
+	const segments: string[] = [];
+
+	for (const segment of rawSegments) {
+		if (segment === '.') continue;
+		if (segment === '..') {
+			if (segments.length > 0 && segments[segments.length - 1] !== '..') {
+				segments.pop();
+			} else if (!hasRoot) {
+				segments.push('..');
+			}
+			continue;
+		}
+		segments.push(segment);
+	}
+
+	const joined = segments.join('/');
+	const comparable = drivePrefix
+		? `${drivePrefix}/${joined}`.replace(/\/$/, '')
+		: hasRoot
+			? `/${joined}`.replace(/\/$/, '')
+			: joined || '.';
+	// Restore prefers a conservative same-directory guard: false positives are safer than
+	// missing a Windows-style case-only path alias and deleting the source publish dir.
+	return comparable.toLowerCase();
+}
+
+function dirname(filePath: string): string {
+	const trimmed = trimTrailingSlashes(filePath);
+	const match = trimmed.match(/^(.*)[/\\][^/\\]+$/);
+	return match?.[1] ?? '';
+}
+
+function basename(filePath: string): string {
+	const trimmed = trimTrailingSlashes(filePath);
+	const match = trimmed.match(/([^/\\]+)$/);
+	return match?.[1] ?? '';
+}
+
+function resolveOutputProjectPath(output: string, fs: Pick<RestoreFileSystem, 'join'>): string {
+	if (/\.fairy$/i.test(output)) return output;
+	const normalizedOutput = trimTrailingSlashes(output);
+	const projectName = basename(normalizedOutput) || 'Restored';
+	return fs.join(normalizedOutput, `${projectName}.fairy`);
+}
+
+async function prepareRestoreOutputDir(
+	inputDir: string,
+	outputDir: string,
+	outputProjectPath: string,
+	fs: RestoreFileSystem,
+	force: boolean,
+	outputIsProjectFile: boolean,
+): Promise<void> {
+	const [resolvedInputDir, resolvedOutputDir] = await Promise.all([
+		Promise.resolve(fs.resolvePath(inputDir)),
+		Promise.resolve(fs.resolvePath(outputDir)),
+	]);
+	if (normalizeComparablePath(resolvedInputDir) === normalizeComparablePath(resolvedOutputDir)) {
+		throw new Error('Restore output directory must be different from the published input directory.');
+	}
+
+	if (outputIsProjectFile) {
+		if (!(await fs.exists(outputDir))) {
+			await fs.mkdir(outputDir);
+			return;
+		}
+		try {
+			await fs.readdir(outputDir);
+		} catch {
+			throw new Error(`Restore output path is not a directory: ${outputDir}`);
+		}
+
+		if (!(await fs.exists(outputProjectPath))) return;
+		if (!force) {
+			throw new Error(`Restore output file already exists: ${outputProjectPath}. Use --force to overwrite it.`);
+		}
+		if (!fs.rm) {
+			throw new Error('Restore output file already exists and the provided fs does not support rm(...).');
+		}
+		await fs.rm(outputProjectPath, { recursive: true, force: true });
+		return;
+	}
+
+	const exists = await fs.exists(outputDir);
+	if (!exists) {
+		await fs.mkdir(outputDir);
+		return;
+	}
+
+	let entries: string[];
+	try {
+		entries = await fs.readdir(outputDir);
+	} catch {
+		throw new Error(`Restore output path is not a directory: ${outputDir}`);
+	}
+
+	if (entries.length === 0) return;
+	if (!force) {
+		throw new Error(`Restore output directory is not empty: ${outputDir}. Use --force to overwrite it.`);
+	}
+	if (!fs.rm) {
+		throw new Error('Restore output directory is not empty and the provided fs does not support rm(...).');
+	}
+	await fs.rm(outputDir, { recursive: true, force: true });
+	await fs.mkdir(outputDir);
+}
+
 export async function restore(options: RestoreOptions): Promise<RestoreResult> {
 	const sourceDir = trimTrailingSlashes(options.inputDir);
-	const outputDir = normalizeRestoreOutputDir(options.output);
-	const outputProjectPath = resolveOutputProjectPath(outputDir, options.fs);
-	await assertRestoreOutputDir(sourceDir, outputDir, options.fs, options.force === true);
+	const outputIsProjectFile = /\.fairy$/i.test(options.output);
+	const outputProjectPath = resolveOutputProjectPath(options.output, options.fs);
+	const outputDir = dirname(outputProjectPath) || '.';
+	await prepareRestoreOutputDir(sourceDir, outputDir, outputProjectPath, options.fs, options.force === true, outputIsProjectFile);
 
 	const packageFilter = options.packages?.length ? new Set(options.packages) : null;
-	const binaryNames = (await options.fs.readdir(sourceDir))
-		.filter((name) => isPublishedBinaryFile(name))
-		.filter((name) => !packageFilter || packageFilter.has(inferPackageName(name)));
-	for (const binaryName of binaryNames) assertSafeRestoreSegment(binaryName, 'published binary file name');
-	const candidateBinaryPaths = binaryNames
-		.map((name) => options.fs.join(sourceDir, name))
-		.sort((left, right) => left.localeCompare(right));
-	const binaryPaths = (await Promise.all(
-		candidateBinaryPaths.map(async (filePath) => (await options.fs.isFile(filePath)) ? filePath : null),
-	))
-		.filter((filePath): filePath is string => !!filePath)
-		.sort((left, right) => left.localeCompare(right));
+
+	// 收集所有搜索目录：顶层 + 一级子目录（支持 FairyGUI 编辑器输出的每包一目录结构）
+	const topEntries = await options.fs.readdir(sourceDir);
+	const subDirs: string[] = [];
+	for (const name of topEntries) {
+		const fullPath = options.fs.join(sourceDir, name);
+		if (!(await options.fs.isFile(fullPath))) {
+			subDirs.push(fullPath);
+		}
+	}
+	const searchDirs = [sourceDir, ...subDirs];
+
+	// 在所有搜索目录中查找二进制文件
+	const binaryPaths: string[] = [];
+	for (const dir of searchDirs) {
+		const entries = await options.fs.readdir(dir).catch(() => [] as string[]);
+		const found = entries
+			.filter((name) => isPublishedBinaryFile(name))
+			.filter((name) => !packageFilter || packageFilter.has(inferPackageName(name)))
+			.map((name) => options.fs.join(dir, name));
+		for (const p of found) {
+			if (await options.fs.isFile(p)) binaryPaths.push(p);
+		}
+	}
+	binaryPaths.sort((left, right) => left.localeCompare(right));
 
 	if (binaryPaths.length === 0) {
 		throw new Error(`No FairyGUI published binary files found in ${sourceDir}.`);
 	}
 
 	const restorer = new RestoreWorkflow(options.fs);
-	const document = await restorer.prepare({
+	return restorer.restore({
 		binaryPaths,
 		sourceDir,
+		sourceDirs: searchDirs,
 		outputProjectPath,
 		projectType: options.projectType,
 		cropImage: options.cropImage,
 		extractImage: options.extractImage,
+		getImageSize: options.getImageSize,
+		padImage: options.padImage,
+		upscaleImage: options.upscaleImage,
+		fontDir: options.fontDir,
+		langDir: options.langDir,
 	});
-	const stagingDir = await createRestoreStagingDir(outputDir, options.fs);
-	const stagingProjectPath = options.fs.join(stagingDir, basename(outputProjectPath));
-	const warnings: string[] = [];
-	try {
-		await restorer.write(document, {
-			binaryPaths,
-			sourceDir,
-			outputProjectPath: stagingProjectPath,
-			projectType: options.projectType,
-			cropImage: options.cropImage,
-			extractImage: options.extractImage,
-		}, warnings);
-		const cleanupWarning = await commitRestoreOutput(stagingDir, outputDir, options.fs);
-		if (cleanupWarning) warnings.push(cleanupWarning);
-	} catch (error) {
-		await options.fs.rm(stagingDir, { recursive: true, force: true }).catch(() => undefined);
-		throw error;
+}
+
+export async function listMissingFonts(options: ListMissingFontsOptions): Promise<FontInfo[]> {
+	const sourceDir = trimTrailingSlashes(options.inputDir);
+	const packageFilter = options.packages?.length ? new Set(options.packages) : null;
+
+	const topEntries = await options.fs.readdir(sourceDir);
+	const subDirs: string[] = [];
+	for (const name of topEntries) {
+		const fullPath = options.fs.join(sourceDir, name);
+		if (!(await options.fs.isFile(fullPath))) {
+			subDirs.push(fullPath);
+		}
+	}
+	const searchDirs = [sourceDir, ...subDirs];
+
+	const binaryPaths: string[] = [];
+	for (const dir of searchDirs) {
+		const entries = await options.fs.readdir(dir).catch(() => [] as string[]);
+		const found = entries
+			.filter((name) => isPublishedBinaryFile(name))
+			.filter((name) => !packageFilter || packageFilter.has(inferPackageName(name)))
+			.map((name) => options.fs.join(dir, name));
+		for (const p of found) {
+			if (await options.fs.isFile(p)) binaryPaths.push(p);
+		}
 	}
 
-	return { document, projectPath: outputProjectPath, warnings };
+	if (binaryPaths.length === 0) return [];
+
+	const reader = new BinaryReader(options.fs);
+	const doc = await reader.readMany(binaryPaths);
+
+	const fonts: FontInfo[] = [];
+	for (const pkg of doc.getRoot().listPackages()) {
+		for (const resource of pkg.listResources()) {
+			if (resource.propertyType !== 'FontResource') continue;
+			const fileName = resourceFileName(resource as any);
+			if (!/\.ttf$/i.test(fileName)) continue;
+			const fontPath = resource.getPath?.() ?? '/';
+			const relDir = fontPath.replace(/^\/+/, '').replace(/\/+$/, '');
+			const relativeOutputPath = `assets/${pkg.getName()}${relDir ? '/' + relDir : ''}/${fileName}`;
+			fonts.push({
+				packageName: pkg.getName(),
+				resourceId: resource.getId(),
+				fontName: resource.getName?.() ?? fileName.replace(/\.ttf$/i, ''),
+				fileName,
+				relativeOutputPath,
+			});
+		}
+	}
+	return fonts;
 }
 
 class RestoreWorkflow {
 	private readonly _fs: RestoreFileSystem;
+	private _sourceDirs: string[] = [];
+	private _fontDir: string | undefined;
+	private _langDir: string | undefined;
 
 	constructor(fs: RestoreFileSystem) {
 		this._fs = fs;
 	}
 
-	async prepare(options: RestoreExecutionOptions): Promise<Document> {
+	async restore(options: RestoreExecutionOptions): Promise<RestoreResult> {
+		this._sourceDirs = options.sourceDirs?.length ? options.sourceDirs : [options.sourceDir];
+		this._fontDir = options.fontDir;
+		this._langDir = options.langDir;
+		const warnings: string[] = [];
 		const reader = new BinaryReader(this._fs);
 		const doc = await reader.readMany(options.binaryPaths);
-		this._assertDocumentPaths(doc);
 		this._initializeProjectDefaults(doc, options.projectType);
 		this._initializeImageFileNames(doc);
 		this._initializeLooseResourceFileNames(doc);
-		this._assertDocumentPaths(doc);
 		await this._synthesizeLooseSkeletonResources(doc, options.sourceDir);
 		this._initializeRestoredResourceRelations(doc);
 		this._initializePublishedFontTextureIds(doc);
@@ -426,30 +681,17 @@ class RestoreWorkflow {
 		this._initializePublishedTextFontResources(doc);
 		this._initializeDisplayObjectFileNames(doc);
 		this._initializePublishedFontDefaults(doc);
-		this._assertDocumentPaths(doc);
-		return doc;
-	}
-
-	async write(doc: Document, options: RestoreExecutionOptions, warnings: string[]): Promise<void> {
+		this._inferAtlasMaxSize(doc);
+		await this._initializeI18nSettings(doc, options);
 		const writer = new ProjectWriter(this._fs);
 		await writer.write(doc, options.outputProjectPath);
 		await this._restoreAssets(doc, options, warnings);
-	}
 
-	private _assertDocumentPaths(doc: Document): void {
-		for (const pkg of doc.getRoot().listPackages()) {
-			assertSafeRestoreSegment(pkg.getName(), 'package name');
-			assertSafeRestoreSegment(pkg.getPublishName() || pkg.getName(), 'package publish name');
-			for (const resource of pkg.listResources() as RestorableResource[]) {
-				normalizeVirtualPath(resource.getPath?.());
-				const branch = resource.getBranch?.() ?? '';
-				if (branch) assertSafeRestoreSegment(branch, 'branch name');
-				const fileName = resourceFileName(resource);
-				if (fileName) assertSafeRestoreSegment(fileName, 'resource file name');
-				const publishedFileName = resourcePublishedFileName(resource);
-				if (publishedFileName) assertSafeRestoreSegment(publishedFileName, 'published resource file name');
-			}
-		}
+		return {
+			document: doc,
+			projectPath: options.outputProjectPath,
+			warnings,
+		};
 	}
 
 	private _initializeProjectDefaults(doc: Document, projectType?: number): void {
@@ -466,16 +708,25 @@ class RestoreWorkflow {
 				common: {},
 				adaptation: {},
 			});
+	}
+
+	/** 从还原出的图集尺寸推断 atlas maxSize 并写入 Publish.json */
+	private _inferAtlasMaxSize(doc: Document): void {
+		let maxDim = 0;
 		for (const pkg of doc.getRoot().listPackages()) {
-			pkg.setSourceAtlasSettings({
-				...pkg.getSourceAtlasSettings(),
-				atlases: pkg.listAtlases().map((atlas) => ({
-					index: atlas.getIndex(),
-					name: atlas.getIndex() === 0 ? 'Default' : atlas.getName(),
-					compression: false,
-				})),
-			});
+			for (const atlas of pkg.listAtlases()) {
+				maxDim = Math.max(maxDim, atlas.getWidth(), atlas.getHeight());
+			}
 		}
+		if (maxDim <= 0) return;
+		// 向上取到 2 的幂次
+		let maxSize = 1;
+		while (maxSize < maxDim) maxSize <<= 1;
+		// 最小 2048
+		maxSize = Math.max(maxSize, 2048);
+		const settings = doc.getRoot().getSettings?.() ?? {};
+		const publish = { ...(settings.publish ?? {}), atlasSetting: { maxSize, paging: true } };
+		doc.getRoot().setSettings?.({ ...settings, publish });
 	}
 
 	private _initializeImageFileNames(doc: Document): void {
@@ -632,16 +883,9 @@ class RestoreWorkflow {
 	): Promise<RestorableResource | null> {
 		const resources = pkg.listResources() as RestorableResource[];
 		const existing = this._findResourceByFile(resources, owner, 'ImageResource', fileName);
+		if (existing) return existing;
 		const sourcePath = await this._resolveLooseSourceFile(pkg, sourceDir, fileName);
-		if (!sourcePath) return existing ?? null;
-		if (existing) {
-			existing.setExtras?.({
-				...(existing.getExtras?.() ?? {}),
-				_publishedFile: fileBaseName(sourcePath),
-				_restoreAsLooseImage: true,
-			});
-			return existing;
-		}
+		if (!sourcePath) return null;
 		const resource = doc.createImageResource(stripExtension(fileName));
 		resource
 			.setId(generateId())
@@ -654,7 +898,7 @@ class RestoreWorkflow {
 			...(resource.getExtras?.() ?? {}),
 			_publishedFile: fileBaseName(sourcePath),
 			_suppressPackageSize: true,
-			_restoreAsLooseImage: true,
+			_syntheticLooseImage: true,
 		});
 		pkg.addResource(resource);
 		return resource as RestorableResource;
@@ -840,14 +1084,34 @@ class RestoreWorkflow {
 			for (const resource of resources) {
 				if (resource.propertyType !== 'FontResource') continue;
 				if (resource.getTextureId?.()) continue;
-				if (resource.getTtf?.() !== true) continue;
-				const expectedFileName = syntheticFontTextureFileName(resource).toLowerCase();
-				const texture = resources.find((candidate) => {
-					return candidate.propertyType === 'ImageResource'
-						&& sameVirtualPath(resource, candidate)
-						&& fileBaseName(resourceFileName(candidate)).toLowerCase() === expectedFileName;
-				});
-				if (texture?.getId?.()) resource.setTextureId?.(texture.getId());
+
+				// 优先检查图集精灵别名 - 发布器会为有纹理的字体创建一个与 font ID 同名的精灵
+				let found = false;
+				for (const pkg2 of doc.getRoot().listPackages()) {
+					for (const atlas of pkg2.listAtlases()) {
+						for (const sprite of atlas.listSprites() as RestorableSprite[]) {
+							if (sprite.getItemId() === resource.getId?.()) {
+								resource.setTextureId?.(resource.getId?.() ?? '');
+								found = true;
+								break;
+							}
+						}
+						if (found) break;
+					}
+					if (found) break;
+				}
+				if (found) continue;
+
+				// 回退: TTF 字体查找合成纹理图片资源
+				if (resource.getTtf?.() === true) {
+					const expectedFileName = syntheticFontTextureFileName(resource).toLowerCase();
+					const texture = resources.find((candidate) => {
+						return candidate.propertyType === 'ImageResource'
+							&& sameVirtualPath(resource, candidate)
+							&& fileBaseName(resourceFileName(candidate)).toLowerCase() === expectedFileName;
+					});
+					if (texture?.getId?.()) resource.setTextureId?.(texture.getId());
+				}
 			}
 		}
 	}
@@ -861,42 +1125,206 @@ class RestoreWorkflow {
 			await this._restoreAtlasImages(pkg, options);
 			await this._writeGeneratedResources(pkg, options, warnings);
 			await this._copyLooseResources(pkg, options, warnings);
+			await this._copyTtfFonts(pkg, options, warnings);
+		}
+		await this._copyLangFiles(doc, options, warnings);
+	}
+
+
+
+	private async _copyTtfFonts(
+		pkg: Package,
+		options: RestoreExecutionOptions,
+		warnings: string[],
+	): Promise<void> {
+		if (!this._fontDir) return;
+
+		const fontDirEntries = await this._fs.readdir(this._fontDir).catch(() => [] as string[]);
+		const ttfFileMap = new Map<string, string>();
+		for (const entry of fontDirEntries) {
+			if (/\.ttf$/i.test(entry)) {
+				ttfFileMap.set(entry.toLowerCase(), entry);
+			}
+		}
+		if (ttfFileMap.size === 0) return;
+
+		for (const resource of pkg.listResources() as RestorableResource[]) {
+			if (resource.propertyType !== 'FontResource') continue;
+			const fileName = resourceFileName(resource);
+			if (!/\.ttf$/i.test(fileName)) continue;
+
+			const match = ttfFileMap.get(fileName.toLowerCase());
+			if (!match) {
+				warnings.push(`TTF font file not found in fontDir for package "${pkg.getName()}": ${fileName}`);
+				continue;
+			}
+
+			const sourcePath = this._fs.join(this._fontDir!, match);
+			const outputPath = this._resourceOutputPath(options.outputProjectPath, pkg, resource, fileName);
+			await this._mkdirForFile(outputPath);
+			await this._fs.writeFileRaw(outputPath, await this._fs.readFileRaw(sourcePath));
 		}
 	}
 
-	private async _restoreAtlasImages(pkg: Package, options: RestoreExecutionOptions): Promise<void> {
-		if (!options.cropImage) return;
-		for (const atlas of pkg.listAtlases()) {
-			const sourceAtlas = await this._resolveSourceFile(options.sourceDir, this._sourceFileCandidates(pkg, atlas.getFile()));
-			if (!sourceAtlas) {
-				throw new Error(`Atlas image not found for package "${pkg.getName()}": ${this._sourceFileCandidates(pkg, atlas.getFile()).join(', ')}`);
-			}
-			for (const sprite of atlas.listSprites() as RestorableSprite[]) {
-				const image = findImageResource(pkg, sprite.getItemId());
-				if (!image) continue;
-				if (sprite.getRectWidth() <= 0 || sprite.getRectHeight() <= 0) continue;
-				const outputPath = this._resourceOutputPath(options.outputProjectPath, pkg, image, imageFileName(image));
-				const imageWidth = image.getWidth?.() ?? 0;
-				const imageHeight = image.getHeight?.() ?? 0;
-				const spriteWidth = sprite.getRotated() ? sprite.getRectHeight() : sprite.getRectWidth();
-				const spriteHeight = sprite.getRotated() ? sprite.getRectWidth() : sprite.getRectHeight();
-				await this._mkdirForFile(outputPath);
-				await options.cropImage({
-					sourcePath: sourceAtlas,
-					outputPath,
-					left: sprite.getRectX(),
-					top: sprite.getRectY(),
-					width: sprite.getRectWidth(),
-					height: sprite.getRectHeight(),
-					rotated: sprite.getRotated(),
-					offsetX: sprite.getOffsetX(),
-					offsetY: sprite.getOffsetY(),
-					expectedWidth: Math.max(imageWidth, sprite.getOriginalWidth(), spriteWidth),
-					expectedHeight: Math.max(imageHeight, sprite.getOriginalHeight(), spriteHeight),
-				});
+
+	private async _initializeI18nSettings(doc: Document, options: RestoreExecutionOptions): Promise<void> {
+		if (!this._langDir) return;
+
+		const langDirEntries = await this._fs.readdir(this._langDir).catch(() => [] as string[]);
+		const langFileRegex = /^fairy多语言_(.+).txt$/;
+		const langFiles: Array<{ name: string; path: string; fontName: string }> = [];
+
+		const basePath = this._fs.dirname(options.outputProjectPath);
+
+		for (const entry of langDirEntries) {
+			const match = langFileRegex.exec(entry);
+			if (match) {
+				const absPath = this._fs.join(basePath, entry);
+				langFiles.push({ name: match[1], path: absPath, fontName: "" });
 			}
 		}
+		if (langFiles.length === 0) return;
+
+		const settings = doc.getRoot().getSettings?.() ?? {};
+		doc.getRoot().setSettings?.({
+			...settings,
+			i18n: { langFiles },
+		});
 	}
+
+
+	private async _copyLangFiles(
+		doc: Document,
+		options: RestoreExecutionOptions,
+		warnings: string[],
+	): Promise<void> {
+		if (!this._langDir) return;
+
+		const langDirEntries = await this._fs.readdir(this._langDir).catch(() => [] as string[]);
+		// 只匹配多语言文件，不带 _ 前缀的 CSV 备份
+		const langFiles = langDirEntries.filter(e => /^fairy多语言_.+\.txt$/.test(e));
+		if (langFiles.length === 0) return;
+
+		const basePath = this._fs.dirname(options.outputProjectPath);
+		for (const fileName of langFiles) {
+			const sourcePath = this._fs.join(this._langDir!, fileName);
+			const outputPath = this._fs.join(basePath, fileName);
+			await this._mkdirForFile(outputPath);
+			await this._fs.writeFileRaw(outputPath, await this._fs.readFileRaw(sourcePath));
+		}
+	}
+
+		private async _restoreAtlasImages(pkg: Package, options: RestoreExecutionOptions): Promise<void> {
+			if (!options.cropImage) return;
+			for (const atlas of pkg.listAtlases()) {
+				const sourceAtlas = await this._resolveSourceFile(options.sourceDir, this._sourceFileCandidates(pkg, atlas.getFile()));
+				if (!sourceAtlas) {
+					throw new Error(`Atlas image not found for package "${pkg.getName()}": ${this._sourceFileCandidates(pkg, atlas.getFile()).join(', ')}`);
+				}
+
+				// 获取实际图集图片尺寸
+				const logicalWidth = atlas.getWidth();
+				const logicalHeight = atlas.getHeight();
+				let actualWidth = logicalWidth;
+				let actualHeight = logicalHeight;
+				if (options.getImageSize) {
+					const actualSize = await options.getImageSize(sourceAtlas);
+					if (actualSize) {
+						actualWidth = actualSize.width;
+						actualHeight = actualSize.height;
+					}
+				}
+
+				// 检测图集缩放 (实际图片尺寸 vs 二进制记录的逻辑尺寸)
+				// FairyGUI 发布时可能对图集做降采样，运行时通过 UV 缩放映射坐标
+				const scaleX = logicalWidth > 0 ? actualWidth / logicalWidth : 1;
+				const scaleY = logicalHeight > 0 ? actualHeight / logicalHeight : 1;
+				const isScaled = Math.abs(scaleX - 1) > 0.001 || Math.abs(scaleY - 1) > 0.001;
+
+				// 计算图集需要的最小尺寸, 用于 pad 被裁剪过的图集
+				let maxAtlasX = 0;
+				let maxAtlasY = 0;
+				for (const sp of atlas.listSprites() as RestorableSprite[]) {
+					const right = sp.getRectX() + sp.getRectWidth();
+					const bottom = sp.getRectY() + sp.getRectHeight();
+					if (right > maxAtlasX) maxAtlasX = right;
+					if (bottom > maxAtlasY) maxAtlasY = bottom;
+				}
+
+				// 确定工作图集路径: 放大或补边到逻辑尺寸
+				let workingAtlasPath = sourceAtlas;
+				if (isScaled && options.getImageSize && options.upscaleImage) {
+					// 图集被降采样: 放大到逻辑尺寸后用原始坐标提取 sprite
+					const upscaleW = Math.pow(2, Math.ceil(Math.log2(logicalWidth)));
+					const upscaleH = Math.pow(2, Math.ceil(Math.log2(logicalHeight)));
+					console.warn('[restore] Atlas "' + atlas.getFile() + '" scaled: logical ' + logicalWidth + 'x' + logicalHeight + ', actual ' + actualWidth + 'x' + actualHeight + ', upscaling to ' + upscaleW + 'x' + upscaleH);
+					workingAtlasPath = sourceAtlas + '.upscaled.png';
+					await options.upscaleImage(sourceAtlas, workingAtlasPath, upscaleW, upscaleH);
+				} else if (maxAtlasX > 0 && maxAtlasY > 0 && options.getImageSize && options.padImage) {
+					// 图集被裁剪: 补边到 2 的幂次
+					if (actualWidth < maxAtlasX || actualHeight < maxAtlasY) {
+						const padW = Math.pow(2, Math.ceil(Math.log2(maxAtlasX)));
+						const padH = Math.pow(2, Math.ceil(Math.log2(maxAtlasY)));
+						console.warn('[restore] Atlas "' + atlas.getFile() + '" trimmed: ' + actualWidth + 'x' + actualHeight + ', padding to ' + padW + 'x' + padH);
+						workingAtlasPath = sourceAtlas + '.padded.png';
+						await options.padImage(sourceAtlas, workingAtlasPath, padW, padH);
+					}
+				}
+
+				for (const sprite of atlas.listSprites() as RestorableSprite[]) {
+					const image = findImageResource(pkg, sprite.getItemId());
+					if (!image) continue;
+
+					if (sprite.getRectWidth() <= 0 || sprite.getRectHeight() <= 0) {
+						// sprite 在图集中尺寸为0（被发布器裁剪/合并），生成占位图片
+						const origW = sprite.getOriginalWidth?.() ?? image.getWidth?.() ?? 0;
+						const origH = sprite.getOriginalHeight?.() ?? image.getHeight?.() ?? 0;
+						if (origW > 0 && origH > 0 && options.extractImage) {
+							const placeholderPath = this._resourceOutputPath(options.outputProjectPath, pkg, image, imageFileName(image));
+							await this._mkdirForFile(placeholderPath);
+							try {
+								const data = await options.extractImage({
+									sourcePath: workingAtlasPath,
+									outputPath: placeholderPath,
+									left: 0, top: 0, width: 0, height: 0,
+									rotated: false,
+									offsetX: 0, offsetY: 0,
+									expectedWidth: origW,
+									expectedHeight: origH,
+								});
+								await this._fs.writeFileRaw(placeholderPath, data);
+							} catch (placeholderError: any) {
+								console.warn('[restore] Failed to create placeholder for "' + (image.getName?.() ?? image.getItemId()) + '": ' + (placeholderError?.message ?? placeholderError));
+							}
+						}
+						continue;
+					}
+					const outputPath = this._resourceOutputPath(options.outputProjectPath, pkg, image, imageFileName(image));
+					const imageWidth = image.getWidth?.() ?? 0;
+					const imageHeight = image.getHeight?.() ?? 0;
+					const spriteWidth = sprite.getRotated() ? sprite.getRectHeight() : sprite.getRectWidth();
+					const spriteHeight = sprite.getRotated() ? sprite.getRectWidth() : sprite.getRectHeight();
+					await this._mkdirForFile(outputPath);
+					try {
+						await options.cropImage({
+							sourcePath: workingAtlasPath,
+							outputPath,
+							left: sprite.getRectX(),
+							top: sprite.getRectY(),
+							width: sprite.getRectWidth(),
+							height: sprite.getRectHeight(),
+							rotated: sprite.getRotated(),
+							offsetX: sprite.getOffsetX(),
+							offsetY: sprite.getOffsetY(),
+							expectedWidth: Math.max(imageWidth, sprite.getOriginalWidth(), spriteWidth),
+							expectedHeight: Math.max(imageHeight, sprite.getOriginalHeight(), spriteHeight),
+						});
+					} catch (cropError: any) {
+						console.warn('[restore] Skipping sprite "' + (image.getName?.() ?? image.getItemId()) + '" rect=' + sprite.getRectX() + ',' + sprite.getRectY() + ' ' + sprite.getRectWidth() + 'x' + sprite.getRectHeight() + ': ' + (cropError?.message ?? cropError));
+					}
+				}
+			}
+		}
 
 	private async _copyLooseResources(
 		pkg: Package,
@@ -904,8 +1332,8 @@ class RestoreWorkflow {
 		warnings: string[],
 	): Promise<void> {
 		for (const resource of pkg.listResources() as RestorableResource[]) {
-			const restoreAsLooseImage = resource.getExtras?.()?._restoreAsLooseImage === true;
-			if (!['SoundResource', 'MiscResource', 'SpineResource', 'DragonBonesResource'].includes(resource.propertyType) && !restoreAsLooseImage) {
+			const syntheticLooseImage = resource.getExtras?.()?._syntheticLooseImage === true;
+			if (!['SoundResource', 'MiscResource', 'SpineResource', 'DragonBonesResource'].includes(resource.propertyType) && !syntheticLooseImage) {
 				continue;
 			}
 			const fileName = resourceFileName(resource);
@@ -947,7 +1375,52 @@ class RestoreWorkflow {
 
 		const outputPath = this._resourceOutputPath(outputProjectPath, pkg, resource, fileName);
 		await this._mkdirForFile(outputPath);
-		await this._fs.writeFile(outputPath, serializeFont(pkg, resource, glyphs));
+		await this._fs.writeFile(outputPath, this._serializeFont(pkg, resource, glyphs));
+	}
+
+	private _serializeFont(pkg: Package, resource: RestorableResource, glyphs: RestorableFontGlyph[]): string {
+		const isTtf = resource.getTtf?.() === true;
+		const lines = isTtf
+			? this._serializeTtfFontHeader(pkg, resource, glyphs)
+			: [
+				'info creator=UIBuilder',
+				`common lineHeight=${resource.getLineHeight?.() ?? 0}`,
+			];
+
+		for (const glyph of glyphs) {
+			const charId = fontGlyphCharId(glyph);
+			if (isTtf) {
+				lines.push(
+					`char id=${charId} x=${glyph.getX()} y=${glyph.getY()} width=${glyph.getWidth()} height=${glyph.getHeight()} `
+					+ `xoffset=${glyph.getXOffset()} yoffset=${glyph.getYOffset()} xadvance=${glyph.getAdvance()} page=0 chnl=${glyph.getChannel()}`,
+				);
+			} else {
+				lines.push(
+					`char id=${charId} img=${glyph.getImg()} xoffset=${glyph.getXOffset()} yoffset=${glyph.getYOffset()} xadvance=${glyph.getAdvance()}`,
+				);
+			}
+		}
+
+		return `${lines.join('\n')}\n`;
+	}
+
+	private _serializeTtfFontHeader(pkg: Package, resource: RestorableResource, glyphs: RestorableFontGlyph[]): string[] {
+		const fileName = resourceFileName(resource);
+		const face = stripExtension(fileName) || resource.getName?.() || 'Font';
+		const lineHeight = resource.getLineHeight?.() ?? 0;
+		const fontSize = resource.getFontSize?.() ?? lineHeight;
+		const textureId = resource.getTextureId?.() ?? '';
+		const textureResource = textureId ? pkg.getResourceById(textureId) as RestorableResource | null : null;
+		const textureName = textureResource ? resourceFileName(textureResource) : `${face}_atlas.png`;
+		const scaleW = textureResource?.getWidth?.() ?? 256;
+		const scaleH = textureResource?.getHeight?.() ?? 256;
+		const base = Math.max(Math.min(fontSize, lineHeight) - 6, 0);
+		return [
+			`info face="${face}" size=${fontSize} bold=0 italic=0 charset="" unicode=1 stretchH=100 smooth=1 aa=1 padding=0,0,0,0 spacing=1,1 outline=0`,
+			`common lineHeight=${lineHeight} base=${base} scaleW=${scaleW} scaleH=${scaleH} pages=1 packed=0 alphaChnl=${resource.getTint?.() ? 1 : 0} redChnl=0 greenChnl=0 blueChnl=0`,
+			`page id=0 file="${textureName}"`,
+			`chars count=${glyphs.length}`,
+		];
 	}
 
 	private async _writeMovieClipFile(
@@ -994,7 +1467,7 @@ class RestoreWorkflow {
 
 		const outputPath = this._resourceOutputPath(options.outputProjectPath, pkg, resource, fileName);
 		await this._mkdirForFile(outputPath);
-		await this._fs.writeFileRaw(outputPath, serializeMovieClip(resource, frames, textures));
+		await this._fs.writeFileRaw(outputPath, this._serializeMovieClip(resource, frames, textures));
 	}
 
 	private async _writeSyntheticFontGlyphImages(pkg: Package, outputProjectPath: string): Promise<void> {
@@ -1002,6 +1475,8 @@ class RestoreWorkflow {
 			if (resource.propertyType !== 'ImageResource' || !isSyntheticFontGlyphResource(resource)) continue;
 			const fileName = resourceFileName(resource) || defaultSyntheticFontGlyphFileName(resource.getId?.() ?? 'glyph');
 			const outputPath = this._resourceOutputPath(outputProjectPath, pkg, resource, fileName);
+			// skip if already extracted from atlas by _restoreAtlasImages
+			if (await this._fs.exists(outputPath)) continue;
 			await this._mkdirForFile(outputPath);
 			await this._fs.writeFileRaw(outputPath, TRANSPARENT_PNG_1X1);
 		}
@@ -1024,19 +1499,55 @@ class RestoreWorkflow {
 		return sprites;
 	}
 
+	private _serializeMovieClip(
+		resource: RestorableResource,
+		frames: RestorableMovieFrame[],
+		textures: Uint8Array[],
+	): Uint8Array {
+		const chunks: Uint8Array[] = [
+			encodeJtaUtf(JTA_FILE_MARK),
+			writeInt32(JTA_VERSION),
+			writeByte(0),
+			writeByte(0),
+			writeByte(0),
+			writeByte(0),
+			writeUint16(0),
+			writeUint16(0),
+			writeUint16(resource.getWidth?.() ?? 0),
+			writeUint16(resource.getHeight?.() ?? 0),
+			writeByte(jtaSpeed(resource.getInterval?.() ?? 0)),
+			writeByte(scaledFrameDelay(resource.getRepeatDelay?.() ?? 0)),
+			writeByte(resource.getSwing?.() ? 1 : 0),
+			writeInt16(frames.length),
+		];
+
+		for (const [index, frame] of frames.entries()) {
+			chunks.push(
+				writeInt16(scaledFrameDelay(frame.getAddDelay())),
+				writeInt16(frame.getRectX()),
+				writeInt16(frame.getRectY()),
+				writeInt16(frame.getRectWidth()),
+				writeInt16(frame.getRectHeight()),
+				writeInt16(textures[index]?.byteLength === 0 ? -1 : index),
+			);
+		}
+
+		chunks.push(writeInt16(textures.length));
+		for (const texture of textures) {
+			chunks.push(writeInt32(texture.byteLength), texture);
+		}
+
+		return concatBytes(chunks);
+	}
+
 	private _sourceFileCandidates(pkg: Package, fileName: string, outputFileName = fileName): string[] {
 		const publishName = pkg.getPublishName() || pkg.getName();
-		assertSafeRestoreSegment(publishName, 'package publish name');
-		assertSafeRestoreSegment(fileName, 'published source file name');
-		assertSafeRestoreSegment(outputFileName, 'published source file name');
-		const candidates = Array.from(new Set([
+		return Array.from(new Set([
 			`${publishName}_${fileName}`,
 			fileName,
 			`${publishName}_${outputFileName}`,
 			outputFileName,
 		]));
-		for (const candidate of candidates) assertSafeRestoreSegment(candidate, 'published source file name');
-		return candidates;
 	}
 
 	private async _resolveLooseSourceFile(pkg: Package, sourceDir: string, outputFileName: string): Promise<string | null> {
@@ -1049,16 +1560,13 @@ class RestoreWorkflow {
 	}
 
 	private async _resolveSourceFile(sourceDir: string, candidates: string[]): Promise<string | null> {
-		const resolvedSourceDir = await Promise.resolve(this._fs.resolvePath(sourceDir));
-		for (const candidate of candidates) {
-			assertSafeRestoreSegment(candidate, 'published source file name');
-			const sourcePath = this._fs.join(sourceDir, candidate);
-			if (!(await this._fs.isFile(sourcePath))) continue;
-			const resolvedSourcePath = await Promise.resolve(this._fs.resolvePath(sourcePath));
-			if (!isPathWithin(resolvedSourceDir, resolvedSourcePath)) {
-				throw new Error(`restore: Published source file resolves outside the input directory: ${candidate}.`);
+		// 搜索传入的 sourceDir 以及所有已知的 sourceDirs（包括子目录）
+		const allDirs = [sourceDir, ...this._sourceDirs.filter(d => d !== sourceDir)];
+		for (const dir of allDirs) {
+			for (const candidate of candidates) {
+				const sourcePath = this._fs.join(dir, candidate);
+				if (await this._fs.isFile(sourcePath)) return sourcePath;
 			}
-			return resolvedSourcePath;
 		}
 		return null;
 	}
@@ -1071,9 +1579,6 @@ class RestoreWorkflow {
 	): string {
 		const basePath = this._fs.dirname(outputProjectPath);
 		const branch = resource.getBranch?.() ?? '';
-		assertSafeRestoreSegment(pkg.getName(), 'package name');
-		if (branch) assertSafeRestoreSegment(branch, 'branch name');
-		assertSafeRestoreSegment(fileName, 'resource file name');
 		const assetsDir = branch ? `assets_${branch}` : 'assets';
 		const virtualPath = normalizeVirtualPath(resource.getPath?.());
 		const pkgDir = this._fs.join(basePath, assetsDir, pkg.getName());

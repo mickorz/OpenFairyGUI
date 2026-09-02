@@ -7,22 +7,15 @@ export { ExtensionProperty } from './extension-property.js';
 export { Root } from './root.js';
 
 // Resources
-export {
-	Package,
-	type PackageAtlasSizeOption,
-	type PackageResourceFolder,
-	type PackageSourceAtlas,
-	type PackageSourceAtlasSettings,
-} from './package.js';
+export { Package } from './package.js';
 export { ImageResource, type PixelHitTestData } from './image-resource.js';
 export { MiscResource } from './misc-resource.js';
 export { SoundResource } from './sound-resource.js';
 export { FontResource } from './font-resource.js';
 export { MovieClipResource } from './movie-clip-resource.js';
-export { SwfResource } from './swf-resource.js';
 export { SpineResource } from './spine-resource.js';
 export { DragonBonesResource } from './dragon-bones-resource.js';
-export { Component, type ComponentCustomProperty } from './component.js';
+export { Component } from './component.js';
 export { Atlas } from './atlas.js';
 export { Sprite } from './sprite.js';
 export { FairyBuffer } from './buffer.js';
@@ -40,8 +33,8 @@ export { GGroup } from './g-group.js';
 export { GLoader } from './g-loader.js';
 export { GLoader3D } from './g-loader-3d.js';
 export { GMovieClip } from './g-movie-clip.js';
-export { GComponent, type GComponentPropertyOverride } from './g-component.js';
-export { GList, type GListItemData } from './g-list.js';
+export { GComponent } from './g-component.js';
+export { GList } from './g-list.js';
 export {
 	GTree,
 	type GTreeItemTemplateInfo,
@@ -57,7 +50,7 @@ export { GSlider } from './g-slider.js';
 export { GScrollBar } from './g-scroll-bar.js';
 
 // Controller / Gear / Transition
-export { Controller, type ControllerHomePageType } from './controller.js';
+export { Controller } from './controller.js';
 export { ControllerPage } from './controller-page.js';
 export { ControllerAction } from './controller-action.js';
 export { Transition } from './transition.js';

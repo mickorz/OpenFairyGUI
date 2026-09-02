@@ -2,15 +2,11 @@ import test from 'ava';
 import path from 'node:path';
 import fs from 'node:fs/promises';
 import os from 'node:os';
-import { Document } from '@openfairygui/core';
-import { NodeIO } from '@openfairygui/core/node';
+import { NodeIO, Document } from '@openfairygui/core';
 import { getFixturePath, getFixtureProjectPath } from '@openfairygui/test-utils';
-import sharpImplementation from 'sharp';
-import { publish, resolvePublishOptions, type AtlasRasterBackend, type RootProjectSettings } from '../src/index.js';
+import sharp from 'sharp';
+import { publish, resolvePublishOptions, type RootProjectSettings } from '../src/index.js';
 import { resolvePublishAtlasRuntimeOptions } from '../src/publish.js';
-import { createTestJta } from './test-jta.js';
-
-const sharp = sharpImplementation as typeof sharpImplementation & AtlasRasterBackend;
 
 const UNITY_EXAMPLES_FAIRY = getFixtureProjectPath('FairyGUI-unity', 'UIProject/FairyGUI-Unity-Examples.fairy');
 const UNITY_BRANCH_LOADER_FAIRY = getFixtureProjectPath('FairyGUI-Experiments');
@@ -76,7 +72,6 @@ function parsePackageBinary(bytes: Uint8Array): {
 		ext: number | null;
 		branch: string | null;
 		branchItems: Array<string | null>;
-		highResolutionItems: Array<string | null>;
 	}>;
 	spriteIds: string[];
 	hitTestIds: string[];
@@ -134,7 +129,6 @@ function parsePackageBinary(bytes: Uint8Array): {
 		ext: number | null;
 		branch: string | null;
 		branchItems: Array<string | null>;
-		highResolutionItems: Array<string | null>;
 	}> = [];
 	pos = offsets[1];
 	const itemCount = dataView.getInt16(pos, false);
@@ -203,14 +197,11 @@ function parsePackageBinary(bytes: Uint8Array): {
 			branchItems.push(branchItemRef.value);
 		}
 		const highResCount = dataView.getUint8(pos++);
-		const highResolutionItems: Array<string | null> = [];
 		for (let highResIndex = 0; highResIndex < highResCount; highResIndex++) {
-			const highResRef = readStringRef(dataView, strings, pos);
-			pos = highResRef.nextPos;
-			highResolutionItems.push(highResRef.value);
+			pos += 2;
 		}
 
-		items.push({ type, id, file, width, height, ext, branch: branchRef.value, branchItems, highResolutionItems });
+		items.push({ type, id, file, width, height, ext, branch: branchRef.value, branchItems });
 		pos = nextPos;
 	}
 
@@ -245,7 +236,7 @@ function parsePackageBinary(bytes: Uint8Array): {
 	return { branches, items, spriteIds, hitTestIds };
 }
 
-// ─── publish() output contracts ──────────────────────────────────────
+// ─── publish() without encoder (layout-only + binary write) ──────────
 
 test('publish: generates .fui files for a synthetic document', async (t) => {
 	const doc = new Document();
@@ -284,74 +275,6 @@ test('publish: generates .fui files for a synthetic document', async (t) => {
 		t.is(pkg2.getId(), 'test0001', 'package ID preserved');
 		t.is(pkg2.getName(), 'TestPkg', 'package name preserved');
 		t.is(pkg2.listResources().length, 0, 'publish prunes unexported and unreferenced resources from binary output');
-	} finally {
-		await fs.rm(tmpDir, { recursive: true, force: true });
-	}
-});
-
-test('publish: includes linked high-resolution image resources without upscaling', async (t) => {
-	const doc = new Document();
-	doc.getRoot().setProjectType(4);
-	doc.getRoot().setSettings({
-		publish: {
-			includeHighResolution: 5,
-		},
-	} as RootProjectSettings);
-
-	const pkg = doc.createPackage('HiResPkg');
-	pkg.setId('hires001');
-
-	const icon = doc.createImageResource('icon.png');
-	icon.setId('base01').setPath('/').setWidth(16).setHeight(16);
-	pkg.addResource(icon);
-
-	const icon2x = doc.createImageResource('icon@2x.png');
-	icon2x.setId('hi2x01').setPath('/').setWidth(32).setHeight(32);
-	pkg.addResource(icon2x);
-
-	const icon4x = doc.createImageResource('icon@4x.png');
-	icon4x.setId('hi4x01').setPath('/').setWidth(64).setHeight(64);
-	pkg.addResource(icon4x);
-
-	const component = doc.createComponent('Main');
-	component.setId('main01').setExported(true);
-	const child = doc.createGImage('icon');
-	child.setId('n0').setSrc('base01');
-	component.addChild(child);
-	pkg.addResource(component);
-
-	const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'openfairygui-pub-hires-'));
-	const basePath = path.join(tmpDir, 'assets');
-	const sourceDir = path.join(basePath, 'HiResPkg');
-
-	try {
-		await fs.mkdir(sourceDir, { recursive: true });
-		await sharp({ create: { width: 16, height: 16, channels: 4, background: '#00000000' } }).png().toFile(path.join(sourceDir, 'icon.png'));
-		await sharp({ create: { width: 32, height: 32, channels: 4, background: '#00000000' } }).png().toFile(path.join(sourceDir, 'icon@2x.png'));
-		await sharp({ create: { width: 64, height: 64, channels: 4, background: '#00000000' } }).png().toFile(path.join(sourceDir, 'icon@4x.png'));
-		await doc.transform(publish({
-			output: tmpDir,
-			compressed: false,
-			fs: createFs(),
-			encoder: sharp,
-			basePath,
-		}));
-
-		const bytes = await fs.readFile(path.join(tmpDir, 'HiResPkg.fui'));
-		const parsed = parsePackageBinary(new Uint8Array(bytes.buffer, bytes.byteOffset, bytes.byteLength));
-		const byId = new Map(parsed.items.map((item) => [item.id, item]));
-
-		t.true(byId.has('hi2x01'), '@2x resource is published as its own item');
-		t.true(byId.has('hi4x01'), '@4x resource is published as its own item');
-		t.is(byId.get('base01')?.width, 16, 'base image size is not upscaled');
-		t.is(byId.get('hi2x01')?.width, 32, '@2x resource keeps its own width');
-		t.is(byId.get('hi4x01')?.width, 64, '@4x resource keeps its own width');
-		t.deepEqual(byId.get('base01')?.highResolutionItems, ['hi2x01', null, 'hi4x01']);
-
-		const io = new NodeIO();
-		const roundTripped = await io.readBinary(path.join(tmpDir, 'HiResPkg.fui'));
-		const roundTripIcon = roundTripped.getRoot().getPackage('HiResPkg')?.getResourceById('base01') as any;
-		t.deepEqual(roundTripIcon?.getHighResolutionItemIds?.(), ['hi2x01', null, 'hi4x01']);
 	} finally {
 		await fs.rm(tmpDir, { recursive: true, force: true });
 	}
@@ -462,13 +385,13 @@ test('publish: exports loader skeleton resources and dependency closure with edi
 		const expectedFiles = [
 			'Loader_fui.bytes',
 			'dragon_ske.json',
-			'Loader_biss7.json',
+			'dragon_tex.json',
 			'dragon.png',
 			'alien-pro.skel.bytes',
-			'Loader_nbcg7.atlas.txt',
+			'alien-pma.atlas.txt',
 			'alien-pma.png',
 			'mix-and-match-pro.skel.bytes',
-			'Loader_czqy1i.atlas.txt',
+			'mix-and-match-pma.atlas.txt',
 			'mix-and-match-pma.png',
 		];
 		for (const file of expectedFiles) {
@@ -484,7 +407,7 @@ test('publish: exports loader skeleton resources and dependency closure with edi
 		const bytes = await fs.readFile(path.join(tmpDir, 'Loader_fui.bytes'));
 		const parsed = parsePackageBinary(new Uint8Array(bytes.buffer, bytes.byteOffset, bytes.byteLength));
 		const byId = new Map(parsed.items.map((item) => [item.id, item]));
-		t.is(byId.get('nbcg7')?.file, 'nbcg7.atlas.txt', 'misc atlas dependency writes runtime item-id file name');
+		t.is(byId.get('nbcg7')?.file, 'alien-pma.atlas.txt', 'misc atlas dependency writes published file name');
 		t.is(byId.get('nbcge')?.file, 'alien-pro.skel.bytes', 'spine item writes published skeleton file name');
 		t.is(byId.get('biss6')?.file, 'dragon_ske.json', 'dragonbones item keeps published json file name');
 	} finally {
@@ -624,173 +547,12 @@ test('publish: without fs, only computes layout', async (t) => {
 	img.setId('i001').setWidth(32).setHeight(32);
 	pkg.addResource(img);
 
-	// No output request and no fs → explicit layout-only transform.
-	await doc.transform(publish({}));
+	// No fs → no file output, but atlas layout should still be computed
+	await doc.transform(publish({ output: '/tmp/unused' }));
 
 	const atlases = pkg.listAtlases();
 	t.is(atlases.length, 1, 'atlas node created even without fs');
 	t.is(atlases[0].listSprites().length, 1, 'sprite placed in atlas');
-});
-
-test('publish: an output directory requires a filesystem capability', async (t) => {
-	const doc = new Document();
-	const pkg = doc.createPackage('NoFsPkg');
-	pkg.setId('nofs0001');
-
-	await t.throwsAsync(
-		() => doc.transform(publish({ output: 'release' })),
-		{ message: /requires a filesystem/ },
-	);
-});
-
-test('publish: rejects runtime output without raster capabilities', async (t) => {
-	const doc = new Document();
-	const pkg = doc.createPackage('StrictPkg');
-	pkg.setId('strict01');
-	const image = doc.createImageResource('hero.png');
-	image.setId('img001').setWidth(16).setHeight(16).setExported(true);
-	pkg.addResource(image);
-	const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'openfairygui-pub-strict-'));
-
-	try {
-		await t.throwsAsync(
-			() => doc.transform(publish({ output: tmpDir, fs: createFs() })),
-			{ message: /requires encoder, basePath, and outputPath/ },
-		);
-		t.deepEqual(await fs.readdir(tmpDir), [], 'strict capability validation runs before writing package artifacts');
-	} finally {
-		await fs.rm(tmpDir, { recursive: true, force: true });
-	}
-});
-
-test('publish: rejects missing atlas source images instead of writing transparent holes', async (t) => {
-	const doc = new Document();
-	const pkg = doc.createPackage('MissingImagePkg');
-	pkg.setId('missing01');
-	const image = doc.createImageResource('hero.png');
-	image.setId('img001').setWidth(16).setHeight(16).setExported(true);
-	pkg.addResource(image);
-	const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'openfairygui-pub-image-'));
-
-	try {
-		await t.throwsAsync(
-			() => doc.transform(publish({
-				output: tmpDir,
-				fs: createFs(),
-				encoder: sharp,
-				basePath: path.join(tmpDir, 'assets'),
-			})),
-			{ message: /Could not read image/ },
-		);
-		t.deepEqual(await fs.readdir(tmpDir), [], 'failed atlas input does not write a binary or PNG');
-	} finally {
-		await fs.rm(tmpDir, { recursive: true, force: true });
-	}
-});
-
-test('publish: missing sound input rejects before the package binary is written', async (t) => {
-	const doc = new Document();
-	doc.getRoot().setProjectType(0);
-	const pkg = doc.createPackage('MissingSoundPkg');
-	pkg.setId('sound0001');
-	const sound = doc.createSoundResource('click');
-	sound.setId('snd001').setPath('/sound/').setFile('click.wav').setExported(true);
-	pkg.addResource(sound);
-	const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'openfairygui-pub-sound-'));
-
-	try {
-		await t.throwsAsync(
-			() => doc.transform(publish({
-				output: tmpDir,
-				fs: createFs(),
-				basePath: path.join(tmpDir, 'assets'),
-			})),
-			{ message: /Could not export sound/ },
-		);
-		await t.throwsAsync(() => fs.stat(path.join(tmpDir, 'MissingSoundPkg_fui.bytes')), { code: 'ENOENT' });
-	} finally {
-		await fs.rm(tmpDir, { recursive: true, force: true });
-	}
-});
-
-test('publish: missing external input rejects before the package binary is written', async (t) => {
-	const doc = new Document();
-	doc.getRoot().setProjectType(0);
-	const pkg = doc.createPackage('MissingExternalPkg');
-	pkg.setId('external1');
-	const misc = doc.createMiscResource('config');
-	misc.setId('misc001').setPath('/data/').setFile('config.json').setExported(true);
-	pkg.addResource(misc);
-	const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'openfairygui-pub-external-'));
-
-	try {
-		await t.throwsAsync(
-			() => doc.transform(publish({
-				output: tmpDir,
-				fs: createFs(),
-				basePath: path.join(tmpDir, 'assets'),
-			})),
-			{ message: /Could not export external resource/ },
-		);
-		await t.throwsAsync(() => fs.stat(path.join(tmpDir, 'MissingExternalPkg_fui.bytes')), { code: 'ENOENT' });
-	} finally {
-		await fs.rm(tmpDir, { recursive: true, force: true });
-	}
-});
-
-test('publish: misc resources use runtime-prefixed item-id file names', async (t) => {
-	const doc = new Document();
-	doc.getRoot().setProjectType(0);
-	const pkg = doc.createPackage('Demo');
-	pkg.setId('demo0001').setPublishName('Demo');
-	const misc = doc.createMiscResource('config');
-	misc.setId('misc001').setPath('/data/').setFile('config.json').setExported(true);
-	pkg.addResource(misc);
-
-	const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'openfairygui-pub-misc-'));
-	const assetsDir = path.join(tmpDir, 'assets');
-	const outputDir = path.join(tmpDir, 'release');
-	try {
-		await fs.mkdir(path.join(assetsDir, 'Demo', 'data'), { recursive: true });
-		await fs.writeFile(path.join(assetsDir, 'Demo', 'data', 'config.json'), '{"ok":true}');
-		await doc.transform(publish({ output: outputDir, fs: createFs(), basePath: assetsDir }));
-
-		const outputNames = (await fs.readdir(outputDir)).sort();
-		t.deepEqual(outputNames, ['Demo_fui.bytes', 'Demo_misc001.json']);
-		const bytes = await fs.readFile(path.join(outputDir, 'Demo_fui.bytes'));
-		const parsed = parsePackageBinary(new Uint8Array(bytes.buffer, bytes.byteOffset, bytes.byteLength));
-		t.is(parsed.items.find((item) => item.id === 'misc001')?.file, 'misc001.json');
-	} finally {
-		await fs.rm(tmpDir, { recursive: true, force: true });
-	}
-});
-
-test('publish: SWF resources keep their binary type and runtime-prefixed file', async (t) => {
-	const doc = new Document();
-	doc.getRoot().setProjectType(1);
-	const pkg = doc.createPackage('DemoSwf').setId('demoswf1').setPublishName('DemoSwf');
-	pkg.addResource(doc.createSwfResource('movie')
-		.setId('swf001')
-		.setPath('/movies/')
-		.setFile('movie.swf')
-		.setExported(true));
-
-	const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'openfairygui-pub-swf-'));
-	const assetsDir = path.join(tmpDir, 'assets');
-	const outputDir = path.join(tmpDir, 'release');
-	try {
-		await fs.mkdir(path.join(assetsDir, 'DemoSwf', 'movies'), { recursive: true });
-		await fs.writeFile(path.join(assetsDir, 'DemoSwf', 'movies', 'movie.swf'), new Uint8Array([0x46, 0x57, 0x53]));
-		await doc.transform(publish({ output: outputDir, fs: createFs(), basePath: assetsDir }));
-
-		t.deepEqual((await fs.readdir(outputDir)).sort(), ['DemoSwf.fui', 'DemoSwf_swf001.swf']);
-		const parsed = parsePackageBinary(await fs.readFile(path.join(outputDir, 'DemoSwf.fui')));
-		const item = parsed.items.find((candidate) => candidate.id === 'swf001');
-		t.is(item?.type, 6);
-		t.is(item?.file, 'swf001.swf');
-	} finally {
-		await fs.rm(tmpDir, { recursive: true, force: true });
-	}
 });
 
 test('publish: binary output excludes unpublished image resources and preserves component extension type', async (t) => {
@@ -821,17 +583,11 @@ test('publish: binary output excludes unpublished image resources and preserves 
 	pkg.addResource(button);
 
 	const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'openfairygui-pub-'));
-	const basePath = path.join(tmpDir, 'assets');
-	const sourceDir = path.join(basePath, 'GhostPkg');
 
 	try {
-		await fs.mkdir(sourceDir, { recursive: true });
-		await sharp({ create: { width: 32, height: 32, channels: 4, background: '#00000000' } }).png().toFile(path.join(sourceDir, 'used.png'));
 		await doc.transform(publish({
 			output: tmpDir,
 			fs: createFs(),
-			encoder: sharp,
-			basePath,
 		}));
 
 		const bytes = await fs.readFile(path.join(tmpDir, 'GhostPkg_fui.bytes'));
@@ -844,81 +600,6 @@ test('publish: binary output excludes unpublished image resources and preserves 
 			12,
 			'component extension type is serialized from the formal property',
 		);
-	} finally {
-		await fs.rm(tmpDir, { recursive: true, force: true });
-	}
-});
-
-test('publish: package exclusions remove exported resources from runtime output', async (t) => {
-	const doc = new Document();
-	doc.getRoot().setProjectType(0);
-	const pkg = doc.createPackage('ExcludedPkg');
-	pkg.setId('excluded01');
-	pkg.setSourceAtlasSettings({
-		...pkg.getSourceAtlasSettings(),
-		excludedResourceIds: ['img_excluded'],
-	});
-
-	const image = doc.createImageResource('excluded.png');
-	image.setId('img_excluded').setExported(true).setWidth(16).setHeight(16);
-	pkg.addResource(image);
-	const component = doc.createComponent('Main');
-	component.setId('main01').setExported(true).setSize(16, 16);
-	pkg.addResource(component);
-
-	const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'openfairygui-excluded-'));
-	try {
-		await doc.transform(publish({ output: tmpDir, fs: createFs() }));
-		const bytes = await fs.readFile(path.join(tmpDir, 'ExcludedPkg_fui.bytes'));
-		const itemIds = new Set(parsePackageBinary(bytes).items.map((item) => item.id));
-		t.true(itemIds.has('main01'));
-		t.false(itemIds.has('img_excluded'));
-		t.false(await fs.stat(path.join(tmpDir, 'ExcludedPkg_atlas0.png')).then(() => true).catch(() => false));
-	} finally {
-		await fs.rm(tmpDir, { recursive: true, force: true });
-	}
-});
-
-test('publish: package atlas settings split RGB and alpha outputs', async (t) => {
-	const doc = new Document();
-	doc.getRoot().setProjectType(0);
-	const pkg = doc.createPackage('AlphaPkg');
-	pkg.setId('alpha001');
-	pkg.setSourceAtlasSettings({
-		...pkg.getSourceAtlasSettings(),
-		useGlobal: false,
-		maxSize: 64,
-		sizeOption: 'npot',
-		forceSquare: true,
-		extractAlpha: true,
-	});
-	const image = doc.createImageResource('alpha.png');
-	image.setId('alpha_img').setPath('/').setExported(true).setWidth(17).setHeight(9);
-	pkg.addResource(image);
-
-	const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'openfairygui-alpha-'));
-	const basePath = path.join(tmpDir, 'assets');
-	const sourceDir = path.join(basePath, 'AlphaPkg');
-	try {
-		await fs.mkdir(sourceDir, { recursive: true });
-		await sharp({
-			create: { width: 17, height: 9, channels: 4, background: { r: 10, g: 20, b: 30, alpha: 0.5 } },
-		}).png().toFile(path.join(sourceDir, 'alpha.png'));
-		await doc.transform(publish({ output: tmpDir, fs: createFs(), encoder: sharp, basePath }));
-
-		const colorPath = path.join(tmpDir, 'AlphaPkg_atlas0.png');
-		const alphaPath = path.join(tmpDir, 'AlphaPkg_atlas0!a.png');
-		const colorMetadata = await sharp(colorPath).metadata();
-		const alphaMetadata = await sharp(alphaPath).metadata();
-		t.is(colorMetadata.width, 19, 'package npot keeps the padded atlas width unrounded');
-		t.is(colorMetadata.height, 19, 'package square setting drives atlas size');
-		t.false(colorMetadata.hasAlpha, 'RGB atlas drops its alpha channel');
-		t.is(alphaMetadata.channels, 3, 'alpha atlas stores the channel as RGB');
-		const colorPixel = await sharp(colorPath).raw().toBuffer();
-		const alphaPixel = await sharp(alphaPath).raw().toBuffer();
-		t.deepEqual([...colorPixel.subarray(0, 3)], [10, 20, 30]);
-		t.true(alphaPixel[0]! >= 127 && alphaPixel[0]! <= 128);
-		t.deepEqual([...alphaPixel.subarray(0, 3)], [alphaPixel[0]!, alphaPixel[0]!, alphaPixel[0]!]);
 	} finally {
 		await fs.rm(tmpDir, { recursive: true, force: true });
 	}
@@ -1043,7 +724,7 @@ test('resolvePublishOptions: Layabox respects explicit fileExtension overrides',
 	t.true(resolved.compressed, 'override does not discard non-Unity compression behavior');
 });
 
-test('resolvePublishOptions: Cocos Creator defaults to bin and disables unsupported compression', (t) => {
+test('resolvePublishOptions: Cocos Creator defaults to bin and keeps non-Unity compression behavior', (t) => {
 	const doc = new Document();
 	doc.getRoot().setProjectType(3);
 	doc.getRoot().setSettings({
@@ -1054,7 +735,7 @@ test('resolvePublishOptions: Cocos Creator defaults to bin and disables unsuppor
 
 	const resolved = resolvePublishOptions(doc);
 	t.is(resolved.fileExtension, 'bin', 'Cocos Creator defaults to .bin');
-	t.false(resolved.compressed, 'Cocos Creator ignores persisted compression unsupported by its runtime');
+	t.true(resolved.compressed, 'Cocos Creator keeps publish compression when configured');
 });
 
 test('resolvePublishOptions: Cocos Creator respects explicit fileExtension overrides', (t) => {
@@ -1068,16 +749,7 @@ test('resolvePublishOptions: Cocos Creator respects explicit fileExtension overr
 
 	const resolved = resolvePublishOptions(doc, { fileExtension: 'fui' });
 	t.is(resolved.fileExtension, 'fui', 'explicit override wins over Creator defaults');
-	t.false(resolved.compressed, 'file extension overrides do not re-enable unsupported compression');
-});
-
-test('resolvePublishOptions: Unity and Cocos Creator reject explicit compression', (t) => {
-	for (const projectType of [0, 3]) {
-		const doc = new Document();
-		doc.getRoot().setProjectType(projectType);
-		const error = t.throws(() => resolvePublishOptions(doc, { compressed: true }));
-		t.regex(error?.message ?? '', /does not support compressed package data/);
-	}
+	t.true(resolved.compressed, 'override does not discard non-Unity compression behavior');
 });
 
 test('resolvePublishAtlasRuntimeOptions: ext-coupled atlas toggles stay explicit', (t) => {
@@ -1125,8 +797,6 @@ test('resolvePublishOptions: maps publish atlas settings into reusable atlas opt
 		allowRotation: true,
 		padding: 4,
 		powerOfTwo: true,
-		maxAtlasIndex: 10,
-		multipleOfFour: false,
 		square: true,
 		multiPage: false,
 		trimImage: true,
@@ -1247,9 +917,6 @@ test('publish: code generation gates on global allowGenCode and package genCode'
 		const component = doc.createComponent('Main');
 		component.setId('cmp00001');
 		component.setExported(true);
-		const child = doc.createGTextField('content');
-		child.setId('n0');
-		component.addChild(child);
 		pkg.addResource(component);
 
 		const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'openfairygui-codegen-gates-'));
@@ -1294,9 +961,6 @@ test('publish: package codePath overrides global codeGeneration.codePath', async
 	const component = doc.createComponent('Main');
 	component.setId('cmp00001');
 	component.setExported(true);
-	const child = doc.createGTextField('content');
-	child.setId('n0');
-	component.addChild(child);
 	pkg.addResource(component);
 
 	const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'openfairygui-codegen-path-'));
@@ -1321,7 +985,7 @@ test('publish: package codePath overrides global codeGeneration.codePath', async
 	}
 });
 
-test('publish: Unity blank codeType generates binder and component classes with non-ignored members', async (t) => {
+test('publish: Unity blank codeType generates binder and exported component classes only', async (t) => {
 	const doc = new Document();
 	doc.getRoot().setProjectType(0);
 	doc.getRoot().setSettings({
@@ -1345,9 +1009,6 @@ test('publish: Unity blank codeType generates binder and component classes with 
 	const subPanel = doc.createComponent('SubPanel');
 	subPanel.setId('cmp00002');
 	subPanel.setExported(true);
-	const subPanelChild = doc.createGTextField('content');
-	subPanelChild.setId('n0');
-	subPanel.addChild(subPanelChild);
 	pkg.addResource(subPanel);
 
 	const main = doc.createComponent('Main');
@@ -1390,16 +1051,15 @@ test('publish: Unity blank codeType generates binder and component classes with 
 		const internalClassPath = path.join(generatedDir, 'UI_Internal.cs');
 		const binderPath = path.join(generatedDir, 'DemoPkgBinder.cs');
 
-		t.true(await fs.stat(mainClassPath).then(() => true).catch(() => false), 'main component generates a class');
-		t.true(await fs.stat(subClassPath).then(() => true).catch(() => false), 'referenced component generates a class');
-		t.false(await fs.stat(internalClassPath).then(() => true).catch(() => false), 'component with no generated members does not generate a class');
+		t.true(await fs.stat(mainClassPath).then(() => true).catch(() => false), 'main exported component generates a class');
+		t.true(await fs.stat(subClassPath).then(() => true).catch(() => false), 'referenced exported component generates a class');
+		t.false(await fs.stat(internalClassPath).then(() => true).catch(() => false), 'non-exported component does not generate a class');
 		t.true(await fs.stat(binderPath).then(() => true).catch(() => false), 'binder file is generated');
 
 		const mainClass = await fs.readFile(mainClassPath, 'utf-8');
 		t.true(mainClass.startsWith('/** This is an automatically generated class by FairyGUI. Please do not modify it. **/'));
-		t.false(mainClass.includes('fairygui-cc'), 'Layabox continues using the host global fgui namespace');
 		t.true(mainClass.includes('public partial class UI_Main : GButton'), 'component extension maps to GButton base class');
-		t.true(mainClass.includes('public UI_SubPanel m_subPanel;'), 'local component child uses generated class type');
+		t.true(mainClass.includes('public UI_SubPanel m_subPanel;'), 'local exported component child uses generated class type');
 		t.true(mainClass.includes('public Transition m_fadeIn;'), 'transition field is generated');
 		t.false(mainClass.includes('m_title'), 'default child name is ignored when ignoreNoname=true');
 		t.false(mainClass.includes('m_button'), 'default controller name is ignored when ignoreNoname=true');
@@ -1481,9 +1141,6 @@ test('publish: code generation cleanup removes only prior marked files', async (
 	const component = doc.createComponent('Main');
 	component.setId('cmp00001');
 	component.setExported(true);
-	const child = doc.createGTextField('content');
-	child.setId('n0');
-	component.addChild(child);
 	pkg.addResource(component);
 
 	const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'openfairygui-codegen-cleanup-'));
@@ -1532,9 +1189,6 @@ test('publish: Layabox modern TypeScript code generates package-scoped .ts outpu
 	const subPanel = doc.createComponent('SubPanel');
 	subPanel.setId('cmp00002');
 	subPanel.setExported(true);
-	const subPanelChild = doc.createGTextField('content');
-	subPanelChild.setId('n0');
-	subPanel.addChild(subPanelChild);
 	pkg.addResource(subPanel);
 
 	const main = doc.createComponent('Main');
@@ -1619,9 +1273,6 @@ test('publish: Layabox modern TypeScript code keeps positional member access sem
 	const subPanel = doc.createComponent('SubPanel');
 	subPanel.setId('cmp00002');
 	subPanel.setExported(true);
-	const subPanelChild = doc.createGTextField('content');
-	subPanelChild.setId('n0');
-	subPanel.addChild(subPanelChild);
 	pkg.addResource(subPanel);
 
 	const main = doc.createComponent('Main');
@@ -1733,9 +1384,6 @@ test('publish: Layabox modern TypeScript code works without codeType configurati
 	const component = doc.createComponent('Main');
 	component.setId('cmp00001');
 	component.setExported(true);
-	const child = doc.createGTextField('content');
-	child.setId('n0');
-	component.addChild(child);
 	pkg.addResource(component);
 
 	const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'openfairygui-codegen-laya-no-codetype-'));
@@ -1779,9 +1427,6 @@ test('publish: Cocos Creator reuses the shared fgui TypeScript lane without code
 	const subPanel = doc.createComponent('SubPanel');
 	subPanel.setId('cmp00002');
 	subPanel.setExported(true);
-	const subPanelChild = doc.createGTextField('content');
-	subPanelChild.setId('n0');
-	subPanel.addChild(subPanelChild);
 	pkg.addResource(subPanel);
 
 	const main = doc.createComponent('Main');
@@ -1821,7 +1466,6 @@ test('publish: Cocos Creator reuses the shared fgui TypeScript lane without code
 		t.true(await fs.stat(binderPath).then(() => true).catch(() => false), 'Cocos Creator generates binder file');
 
 		const mainClass = await fs.readFile(mainClassPath, 'utf-8');
-		t.true(mainClass.includes('import * as fgui from "fairygui-cc";'));
 		t.true(mainClass.includes('export default class UI_Main extends fgui.GButton'));
 		t.true(mainClass.includes('return <UI_Main><any>(fgui.UIPackage.createObject("DemoPkg","Main"));'));
 		t.true(mainClass.includes('public m_content:fgui.GTextField;'));
@@ -1832,7 +1476,6 @@ test('publish: Cocos Creator reuses the shared fgui TypeScript lane without code
 		t.false(mainClass.includes('m_button'), 'default button controller is ignored');
 
 		const binder = await fs.readFile(binderPath, 'utf-8');
-		t.true(binder.includes('import * as fgui from "fairygui-cc";'));
 		t.true(binder.includes('fgui.UIObjectFactory.setExtension(UI_Main.URL, UI_Main);'));
 	} finally {
 		await fs.rm(tmpDir, { recursive: true, force: true });
@@ -1857,9 +1500,6 @@ test('publish: unsupported project types still skip the shared fgui TypeScript l
 	const component = doc.createComponent('Main');
 	component.setId('cmp00001');
 	component.setExported(true);
-	const child = doc.createGTextField('content');
-	child.setId('n0');
-	component.addChild(child);
 	pkg.addResource(component);
 
 	const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'openfairygui-codegen-unsupported-ts-'));
@@ -1899,9 +1539,6 @@ test('publish: Layabox modern TypeScript cleanup removes only prior marked .ts f
 	const component = doc.createComponent('Main');
 	component.setId('cmp00001');
 	component.setExported(true);
-	const child = doc.createGTextField('content');
-	child.setId('n0');
-	component.addChild(child);
 	pkg.addResource(component);
 
 	const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'openfairygui-codegen-laya-cleanup-'));
@@ -1924,141 +1561,5 @@ test('publish: Layabox modern TypeScript cleanup removes only prior marked .ts f
 		t.true(await fs.stat(path.join(generatedDir, 'DemoPkgBinder.ts')).then(() => true).catch(() => false), 'new .ts binder file is generated');
 	} finally {
 		await fs.rm(tmpDir, { recursive: true, force: true });
-	}
-});
-
-test('publish: Node raster backend publishes mixed PNG/JPEG MovieClip textures', async (t) => {
-	const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'openfairygui-jta-mixed-'));
-	const assetsDir = path.join(tmpDir, 'assets');
-	const outputDir = path.join(tmpDir, 'release');
-	const png = new Uint8Array(
-		await sharp({ create: { width: 2, height: 3, channels: 4, background: '#ff0000ff' } }).png().toBuffer(),
-	);
-	const jpeg = new Uint8Array(
-		await sharp({ create: { width: 4, height: 5, channels: 3, background: '#00ff00' } }).jpeg().toBuffer(),
-	);
-	const doc = new Document();
-	const pkg = doc.createPackage('MovieFx');
-	pkg.setId('moviepkg');
-	const movieClip = doc.createMovieClipResource('spinner');
-	movieClip.setId('movie001').setPath('/clips/').setFileName('spinner.jta').setExported(true);
-	pkg.addResource(movieClip);
-
-	try {
-		await fs.mkdir(path.join(assetsDir, 'MovieFx', 'clips'), { recursive: true });
-		await fs.writeFile(
-			path.join(assetsDir, 'MovieFx', 'clips', 'spinner.jta'),
-			createTestJta([png, jpeg], [
-				{ textureIndex: 1, rectWidth: 4, rectHeight: 5 },
-				{ textureIndex: 0, rectWidth: 2, rectHeight: 3 },
-				{ textureIndex: 1, rectWidth: 4, rectHeight: 5 },
-				{ textureIndex: -1, rectWidth: 0, rectHeight: 0 },
-			]),
-		);
-
-		await doc.transform(
-			publish({
-				output: outputDir,
-				basePath: assetsDir,
-				fileExtension: 'fui',
-				encoder: sharp,
-				fs: createFs(),
-				codeGeneration: false,
-				atlas: { allowRotation: false },
-			}),
-		);
-
-		t.true(await fs.stat(path.join(outputDir, 'MovieFx.fui')).then(() => true).catch(() => false));
-		t.true(await fs.stat(path.join(outputDir, 'MovieFx_atlas0.png')).then(() => true).catch(() => false));
-		t.deepEqual(movieClip.listFrames().map((frame) => frame.getSpriteId()), [
-			'movie001_0',
-			'movie001_1',
-			'movie001_0',
-			'',
-		]);
-		const atlasMetadata = await sharp(path.join(outputDir, 'MovieFx_atlas0.png')).metadata();
-		t.is(atlasMetadata.format, 'png');
-	} finally {
-		await fs.rm(tmpDir, { recursive: true, force: true });
-	}
-});
-
-test('publish: later truncated and unsupported MovieClips leave all Node built-in output untouched', async (t) => {
-	const createRaster = () => sharp({ create: { width: 8, height: 8, channels: 4, background: '#ffffffff' } });
-	const png = new Uint8Array(await createRaster().png().toBuffer());
-	const jpeg = new Uint8Array(await createRaster().jpeg().toBuffer());
-	const invalidTextures = [
-		['truncated PNG', png.subarray(0, png.byteLength - 1), /Could not decode MovieClip/],
-		['truncated JPEG', jpeg.subarray(0, jpeg.byteLength - 1), /Could not decode MovieClip/],
-		['WebP', new Uint8Array(await createRaster().webp().toBuffer()), /unsupported raster format/],
-		['GIF', new Uint8Array(await createRaster().gif().toBuffer()), /unsupported raster format/],
-		['TIFF', new Uint8Array(await createRaster().tiff().toBuffer()), /unsupported raster format/],
-	] as const;
-
-	for (const [name, invalidTexture, expectedMessage] of invalidTextures) {
-		const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'openfairygui-jta-preflight-'));
-		const assetsDir = path.join(tmpDir, 'assets');
-		const outputDir = path.join(tmpDir, 'release');
-		const generatedDir = path.join(tmpDir, 'generated');
-		const doc = new Document();
-		doc.setProjectDir(tmpDir);
-		doc.getRoot().setProjectType(4);
-		doc.getRoot().setSettings({
-			publish: {
-				codeGeneration: {
-					allowGenCode: true,
-					codePath: 'generated',
-				},
-			},
-		} as RootProjectSettings);
-
-		const addPackage = async (packageName: string, packageId: string, jta: Uint8Array) => {
-			const pkg = doc.createPackage(packageName);
-			pkg.setId(packageId);
-			const movieClip = doc.createMovieClipResource('spinner');
-			movieClip.setId(`${packageId}mc`).setPath('/clips/').setFileName('spinner.jta').setExported(true);
-			pkg.addResource(movieClip);
-			const sourceDir = path.join(assetsDir, packageName, 'clips');
-			await fs.mkdir(sourceDir, { recursive: true });
-			await fs.writeFile(path.join(sourceDir, 'spinner.jta'), jta);
-			return pkg;
-		};
-
-		try {
-			const first = await addPackage('First', 'first001', createTestJta([png], [{ textureIndex: 0 }]));
-			first.setGenCode(true);
-			const component = doc.createComponent('Main');
-			component.setId('main0001').setExported(true);
-			first.addResource(component);
-			const sound = doc.createSoundResource('click');
-			sound.setId('sound001').setPath('/sound/').setFile('click.wav').setExported(true);
-			first.addResource(sound);
-			const misc = doc.createMiscResource('config');
-			misc.setId('misc0001').setPath('/data/').setFile('config.json').setExported(true);
-			first.addResource(misc);
-			await fs.mkdir(path.join(assetsDir, 'First', 'sound'), { recursive: true });
-			await fs.mkdir(path.join(assetsDir, 'First', 'data'), { recursive: true });
-			await fs.writeFile(path.join(assetsDir, 'First', 'sound', 'click.wav'), new Uint8Array([1, 2, 3]));
-			await fs.writeFile(path.join(assetsDir, 'First', 'data', 'config.json'), new Uint8Array([4, 5, 6]));
-			await addPackage('Second', 'second01', createTestJta([invalidTexture], [{ textureIndex: 0 }]));
-
-			await t.throwsAsync(
-				() =>
-					doc.transform(
-						publish({
-							output: outputDir,
-							basePath: assetsDir,
-							fileExtension: 'fui',
-							encoder: sharp,
-							fs: createFs(),
-						}),
-					),
-				{ message: expectedMessage },
-			);
-			t.false(await fs.stat(outputDir).then(() => true).catch(() => false), `${name}: no release output`);
-			t.false(await fs.stat(generatedDir).then(() => true).catch(() => false), `${name}: no generated code output`);
-		} finally {
-			await fs.rm(tmpDir, { recursive: true, force: true });
-		}
 	}
 });

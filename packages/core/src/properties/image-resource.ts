@@ -15,14 +15,11 @@ interface IImageResource extends IExtensibleProperty {
 	path: string;
 	branch: string;
 	branchItemIds: string[];
-	highResolutionItemIds: Array<string | null>;
 	width: number;
 	height: number;
 	exported: boolean;
-	favorite: boolean;
 	textureSetMode: string;
 	qualityOption: string;
-	quality: number;
 	smoothing: boolean;
 	duplicatePadding: boolean;
 	scaleOption: number;
@@ -52,14 +49,11 @@ export class ImageResource extends ExtensibleProperty<IImageResource> {
 			path: '',
 			branch: '',
 			branchItemIds: [],
-			highResolutionItemIds: [],
 			width: 0,
 			height: 0,
 			exported: false,
-			favorite: false,
 			textureSetMode: '',
 			qualityOption: '',
-			quality: 80,
 			smoothing: true,
 			duplicatePadding: false,
 			scaleOption: 0,
@@ -87,9 +81,6 @@ export class ImageResource extends ExtensibleProperty<IImageResource> {
 	public getBranchItemIds(): string[] { return [...this.get('branchItemIds')]; }
 	public setBranchItemIds(ids: string[]): this { return this.set('branchItemIds', [...ids]); }
 
-	public getHighResolutionItemIds(): Array<string | null> { return [...this.getExtendedLiteral('highResolutionItemIds')]; }
-	public setHighResolutionItemIds(ids: Array<string | null>): this { return this.setExtendedLiteral('highResolutionItemIds', ids); }
-
 	public getWidth(): number { return this.get('width'); }
 	public setWidth(w: number): this { return this.set('width', w); }
 
@@ -99,17 +90,11 @@ export class ImageResource extends ExtensibleProperty<IImageResource> {
 	public getExported(): boolean { return this.get('exported'); }
 	public setExported(v: boolean): this { return this.set('exported', v); }
 
-	public getFavorite(): boolean { return this.get('favorite'); }
-	public setFavorite(v: boolean): this { return this.set('favorite', v); }
-
 	public getTextureSetMode(): string { return this.get('textureSetMode'); }
 	public setTextureSetMode(v: string): this { return this.set('textureSetMode', v); }
 
 	public getQualityOption(): string { return this.get('qualityOption'); }
 	public setQualityOption(v: string): this { return this.set('qualityOption', v); }
-
-	public getQuality(): number { return this.get('quality'); }
-	public setQuality(v: number): this { return this.set('quality', v); }
 
 	public getSmoothing(): boolean { return this.get('smoothing'); }
 	public setSmoothing(v: boolean): this { return this.set('smoothing', v); }
@@ -128,10 +113,6 @@ export class ImageResource extends ExtensibleProperty<IImageResource> {
 
 	public getImageData(): FairyBuffer | null { return this.getRef('imageData' as never) as FairyBuffer | null; }
 	public setImageData(buffer: FairyBuffer | null): this { return this.setRef('imageData' as never, buffer as never); }
-
-	/** Primary source-file bytes for this image resource. */
-	public getSourceData(): FairyBuffer | null { return this.getImageData(); }
-	public setSourceData(buffer: FairyBuffer | null): this { return this.setImageData(buffer); }
 
 	public getPixelHitTestData(): PixelHitTestData | null {
 		const pixelWidth = this.get('pixelHitTestPixelWidth');

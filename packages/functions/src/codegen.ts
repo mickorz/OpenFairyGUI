@@ -1,7 +1,7 @@
 import {
 	type Component,
-	type Document,
 	type GComponent,
+	type Document,
 	type GObject,
 	type Package,
 	ProjectType,
@@ -12,10 +12,7 @@ import {
 	UNITY_BINDER_TEMPLATE,
 	UNITY_COMPONENT_TEMPLATE,
 } from './codegen-templates.js';
-import { formatPluginError, type LoadedPlugin, shouldAbortPluginFailure } from './plugins/types.js';
-import { dirname, isAbsolutePathLike, trimTrailingSlashes } from './path-utils.js';
-import type { PublishFileSystem } from './publish/contracts.js';
-import type { CliCodeGenerationSettings, RootProjectSettings } from './shared-types.js';
+import type { CliCodeGenerationSettings, PublishFileSystem, RootProjectSettings } from './shared-types.js';
 
 export const AUTO_GENERATED_CODE_MARK = '/** This is an automatically generated class by FairyGUI. Please do not modify it. **/';
 const DEFAULT_CLASS_NAME_PREFIX = 'UI_';
@@ -25,21 +22,30 @@ export interface PublishCodeGenerationOptions {
 	basePath?: string;
 	fs: PublishFileSystem;
 	packages: Package[];
-	plugins?: LoadedPlugin[];
 }
 
-export interface ResolvedPackageCodegenPlan {
+interface ResolvedCodeGenerationSettings {
+	allowGenCode: boolean;
+	classNamePrefix: string;
+	memberNamePrefix: string;
+	packageName: string;
+	ignoreNoname: boolean;
+	getMemberByName: boolean;
+	codePath: string;
+	codeType: string;
+}
+
+interface ResolvedPackageCodegenPlan {
 	outputDir: string;
 	packageFolderName: string;
 	packageNamespace: string;
 	binderClassName: string;
-	settings: Required<CliCodeGenerationSettings>;
+	settings: ResolvedCodeGenerationSettings;
 }
 
 interface FguiTypescriptVariant {
 	binderMethod: 'setExtension';
 	runtimeNamespace: 'fgui';
-	runtimeImport: string;
 }
 
 const FGUI_TYPESCRIPT_RUNTIME_TYPES = new Set([
@@ -66,33 +72,21 @@ const FGUI_TYPESCRIPT_RUNTIME_TYPES = new Set([
 	'Transition',
 ]);
 
-const LAYABOX_TYPESCRIPT_VARIANT: FguiTypescriptVariant = {
+const SHARED_FGUI_TYPESCRIPT_VARIANT: FguiTypescriptVariant = {
 	binderMethod: 'setExtension',
 	runtimeNamespace: 'fgui',
-	runtimeImport: '',
 };
 
-const COCOS_CREATOR_TYPESCRIPT_VARIANT: FguiTypescriptVariant = {
-	...LAYABOX_TYPESCRIPT_VARIANT,
-	runtimeImport: 'import * as fgui from "fairygui-cc";',
-};
-
-export interface CodegenMember {
+interface CodegenMember {
 	index: number;
 	kind: 'child' | 'controller' | 'transition';
 	name: string;
 	originalName: string;
 	type: string;
 	ignored: boolean;
-	referencedComponent?: CodegenReferencedComponent;
 }
 
-export interface CodegenReferencedComponent {
-	component: Component;
-	package: Package;
-}
-
-export interface CodegenClass {
+interface CodegenClass {
 	classId: string;
 	className: string;
 	encodedClassName: string;
@@ -103,31 +97,13 @@ export interface CodegenClass {
 	members: CodegenMember[];
 }
 
-export async function publishCodeGeneration(doc: Document, options: PublishCodeGenerationOptions): Promise<void> {
+export async function publishCodeGeneration(
+	doc: Document,
+	options: PublishCodeGenerationOptions,
+): Promise<void> {
 	const logger = doc.getLogger();
 	const settings = resolveCodeGenerationSettings(doc);
 	if (!settings.allowGenCode) return;
-
-	const plugins = options.plugins ?? [];
-	if (plugins.length > 0) {
-		let handled = false;
-		for (const plugin of plugins) {
-			const genCode = plugin.plugin.genCode;
-			if (!genCode) continue;
-			try {
-				await genCode(doc, settings, options);
-				handled = true;
-				logger.info(`publish: Generated code using plugin "${plugin.name}"`);
-			} catch (error) {
-				const message = `publish: Code generation plugin "${plugin.name}" failed: ${formatPluginError(error)}`;
-				if (shouldAbortPluginFailure(plugin)) throw new Error(message);
-				logger.warn(message);
-			}
-		}
-		if (handled) {
-			return;
-		}
-	}
 
 	for (const pkg of options.packages) {
 		if (!pkg.getGenCode()) continue;
@@ -153,7 +129,7 @@ export async function publishCodeGeneration(doc: Document, options: PublishCodeG
 	}
 }
 
-export function resolveCodeGenerationSettings(doc: Document): Required<CliCodeGenerationSettings> {
+function resolveCodeGenerationSettings(doc: Document): ResolvedCodeGenerationSettings {
 	const settings = (doc.getRoot().getSettings?.() ?? {}) as RootProjectSettings;
 	const publish = settings.publish ?? {};
 	const codeGeneration = publish.codeGeneration as CliCodeGenerationSettings | undefined;
@@ -183,7 +159,11 @@ export function resolveCodeGenerationSettings(doc: Document): Required<CliCodeGe
 	};
 }
 
-export function resolvePackageCodegenPlan(pkg: Package, settings: Required<CliCodeGenerationSettings>, options: PublishCodeGenerationOptions): ResolvedPackageCodegenPlan | null {
+function resolvePackageCodegenPlan(
+	pkg: Package,
+	settings: ResolvedCodeGenerationSettings,
+	options: PublishCodeGenerationOptions,
+): ResolvedPackageCodegenPlan | null {
 	const rawCodePath = (pkg.getCodePath() || settings.codePath || '').trim();
 	if (!rawCodePath) return null;
 
@@ -209,11 +189,11 @@ function supportsCodeGenerationLane(doc: Document, codeType: string): boolean {
 	return false;
 }
 
+// Layabox and Cocos Creator currently share the same modern fgui TypeScript output contract.
 function resolveFguiTypescriptVariant(doc: Document): FguiTypescriptVariant | null {
 	const projectType = doc.getRoot().getProjectType();
-	if (projectType === ProjectType.LayaBox) return LAYABOX_TYPESCRIPT_VARIANT;
-	if (projectType === ProjectType.CocosCreator) return COCOS_CREATOR_TYPESCRIPT_VARIANT;
-	return null;
+	if (projectType !== ProjectType.LayaBox && projectType !== ProjectType.CocosCreator) return null;
+	return SHARED_FGUI_TYPESCRIPT_VARIANT;
 }
 
 async function generateUnityCode(
@@ -296,11 +276,17 @@ async function cleanupGeneratedFiles(directory: string, fs: PublishFileSystem, e
 	}
 }
 
-export function buildCodegenClasses(doc: Document, pkg: Package, plan: ResolvedPackageCodegenPlan): CodegenClass[] {
-	const codegenComponents = pkg.listComponents().sort((left, right) => left.getId().localeCompare(right.getId()));
+function buildCodegenClasses(
+	doc: Document,
+	pkg: Package,
+	plan: ResolvedPackageCodegenPlan,
+): CodegenClass[] {
+	const exportedComponents = pkg.listComponents()
+		.filter((component) => component.getExported())
+		.sort((left, right) => left.getId().localeCompare(right.getId()));
 	const generatedById = new Map<string, CodegenClass>();
 
-	for (const component of codegenComponents) {
+	for (const component of exportedComponents) {
 		const encodedClassName = `${plan.settings.classNamePrefix}${normalizeTypeName(component.getName()) || 'Component'}`;
 		generatedById.set(component.getId(), {
 			classId: component.getId(),
@@ -314,19 +300,7 @@ export function buildCodegenClasses(doc: Document, pkg: Package, plan: ResolvedP
 		});
 	}
 
-	for (const component of codegenComponents) {
-		const classInfo = generatedById.get(component.getId());
-		if (!classInfo) continue;
-		classInfo.members = buildCodegenMembers(doc, pkg, component, plan, generatedById);
-	}
-
-	for (const [componentId, classInfo] of generatedById) {
-		if (classInfo.members.every((member) => member.ignored)) {
-			generatedById.delete(componentId);
-		}
-	}
-
-	for (const component of codegenComponents) {
+	for (const component of exportedComponents) {
 		const classInfo = generatedById.get(component.getId());
 		if (!classInfo) continue;
 		classInfo.members = buildCodegenMembers(doc, pkg, component, plan, generatedById);
@@ -353,17 +327,13 @@ function buildCodegenMembers(
 	}
 
 	for (const child of component.listChildren()) {
-		if (!isRuntimeChild(child)) continue;
-		const index = childIndex++;
-		const resolvedChild = resolveChildType(doc, pkg, child, generatedById);
 		members.push(createMember(
 			ownerType,
 			'child',
-			resolvedChild.type,
+			resolveChildType(doc, pkg, child, generatedById),
 			child.getName(),
-			index,
+			childIndex++,
 			plan,
-			resolvedChild.referencedComponent,
 		));
 	}
 
@@ -385,10 +355,6 @@ function buildCodegenMembers(
 	return members;
 }
 
-function isRuntimeChild(child: GObject): boolean {
-	return child.propertyType !== 'GGroup' || (child as GObject & { getAdvanced?(): boolean }).getAdvanced?.() === true;
-}
-
 function createMember(
 	ownerType: string,
 	kind: CodegenMember['kind'],
@@ -396,7 +362,6 @@ function createMember(
 	originalName: string,
 	index: number,
 	plan: ResolvedPackageCodegenPlan,
-	referencedComponent?: CodegenReferencedComponent,
 ): CodegenMember {
 	const ignored = plan.settings.ignoreNoname && isDefaultMemberName(ownerType, kind, originalName);
 	return {
@@ -406,13 +371,7 @@ function createMember(
 		originalName,
 		type,
 		ignored,
-		referencedComponent,
 	};
-}
-
-interface ResolvedChildCodegenType {
-	type: string;
-	referencedComponent?: CodegenReferencedComponent;
 }
 
 function resolveChildType(
@@ -420,45 +379,35 @@ function resolveChildType(
 	pkg: Package,
 	child: GObject,
 	generatedById: Map<string, CodegenClass>,
-): ResolvedChildCodegenType {
+): string {
 	const src = (child as GObject & { getSrc?(): string }).getSrc?.();
 	if (src) {
-		let referencedComponent: CodegenReferencedComponent | null = null;
-		if (src.startsWith('ui://')) {
-			const rest = src.slice(5);
-			const pkgId = rest.slice(0, 8);
-			const resourceId = rest.slice(8);
-			const targetPackage = doc.getRoot().listPackages().find((candidate) => candidate.getId() === pkgId);
-			const targetResource = targetPackage?.getResourceById(resourceId);
-			if (targetPackage && targetResource?.propertyType === 'Component') {
-				referencedComponent = { component: targetResource, package: targetPackage };
-			}
-		} else {
-			const packageId = (child as GComponent & { getPackageId?(): string }).getPackageId?.();
-			const targetPackage = packageId
-				? doc.getRoot().listPackages().find((candidate) => candidate.getId() === packageId)
-				: pkg;
-			const targetResource = targetPackage?.getResourceById(src);
-			if (targetPackage && targetResource?.propertyType === 'Component') {
-				referencedComponent = { component: targetResource, package: targetPackage };
-			}
-		}
-
-		if (referencedComponent) {
-			const localGeneratedClass = referencedComponent.package === pkg
-				? generatedById.get(referencedComponent.component.getId())
-				: undefined;
-			return {
-				type: localGeneratedClass?.encodedClassName ?? resolveComponentBaseType(referencedComponent.component),
-				referencedComponent,
-			};
+		const localResource = resolveChildSourceComponent(doc, pkg, src);
+		if (localResource) {
+			return generatedById.get(localResource.getId())?.encodedClassName
+				?? resolveComponentBaseType(localResource);
 		}
 	}
 
 	const instanceExtType = (child as GComponent & { getInstanceExtType?(): string }).getInstanceExtType?.();
-	if (instanceExtType) return { type: `G${instanceExtType}` };
+	if (instanceExtType) return `G${instanceExtType}`;
 
-	return { type: child.propertyType };
+	return child.propertyType;
+}
+
+function resolveChildSourceComponent(doc: Document, pkg: Package, src: string): Component | null {
+	if (!src) return null;
+	if (src.startsWith('ui://')) {
+		const rest = src.slice(5);
+		const pkgId = rest.slice(0, 8);
+		const resourceId = rest.slice(8);
+		const targetPackage = doc.getRoot().listPackages().find((candidate) => candidate.getId() === pkgId);
+		const targetResource = targetPackage?.getResourceById(resourceId);
+		return targetResource?.propertyType === 'Component' ? targetResource : null;
+	}
+
+	const localResource = pkg.getResourceById(src);
+	return localResource?.propertyType === 'Component' ? localResource : null;
 }
 
 function resolveComponentBaseType(component: Component): string {
@@ -539,10 +488,9 @@ function renderFguiTypescriptBinder(
 	const bindLines = classes
 		.map((classInfo) => `\t\t${variant.runtimeNamespace}.UIObjectFactory.${variant.binderMethod}(${classInfo.encodedClassName}.URL, ${classInfo.encodedClassName});`)
 		.join('\n');
-	const classImports = classes
+	const importLines = classes
 		.map((classInfo) => `import ${classInfo.encodedClassName} from "./${classInfo.encodedClassName}";`)
 		.join('\n');
-	const importLines = [variant.runtimeImport, classImports].filter(Boolean).join('\n');
 
 	return renderTemplate(FGUI_TYPESCRIPT_BINDER_TEMPLATE, {
 		binderClassName: plan.binderClassName,
@@ -596,17 +544,31 @@ function resolveCodePath(
 	basePath: string | undefined,
 	fs: Pick<PublishFileSystem, 'join'>,
 ): string {
-	if (isAbsolutePathLike(codePath)) return trimTrailingSlashes(codePath);
+	if (isAbsolutePath(codePath)) return trimTrailingSlashes(codePath);
 	const projectBasePath = resolveProjectBasePath(basePath);
 	return projectBasePath ? trimTrailingSlashes(fs.join(projectBasePath, codePath)) : trimTrailingSlashes(codePath);
 }
 
-export function resolveProjectBasePath(basePath: string | undefined): string {
+function resolveProjectBasePath(basePath: string | undefined): string {
 	if (!basePath) return '';
 	const normalized = trimTrailingSlashes(basePath);
 	const assetsMatch = normalized.match(/^(.*)[/\\]assets(?:_[^/\\]+)?$/i);
 	if (assetsMatch?.[1]) return assetsMatch[1];
 	return dirname(normalized);
+}
+
+function dirname(filePath: string): string {
+	const trimmed = trimTrailingSlashes(filePath);
+	const match = trimmed.match(/^(.*)[/\\][^/\\]+$/);
+	return match?.[1] ?? '';
+}
+
+function trimTrailingSlashes(value: string): string {
+	return value.replace(/[/\\]+$/, '');
+}
+
+function isAbsolutePath(value: string): boolean {
+	return /^[a-z]:[/\\]/i.test(value) || value.startsWith('/') || value.startsWith('\\\\');
 }
 
 function isDefaultMemberName(ownerType: string, kind: CodegenMember['kind'], name: string): boolean {
@@ -616,13 +578,13 @@ function isDefaultMemberName(ownerType: string, kind: CodegenMember['kind'], nam
 	if (kind === 'transition') return false;
 
 	if (ownerType === 'GButton' || ownerType === 'GLabel' || ownerType === 'GComboBox') {
-		if (name === 'title' || name === 'icon') return true;
+		return name === 'title' || name === 'icon';
 	}
 	if (ownerType === 'GProgressBar') {
-		if (name === 'bar' || name === 'bar_v' || name === 'title' || name === 'ani') return true;
+		return name === 'bar' || name === 'bar_v' || name === 'title' || name === 'ani';
 	}
 	if (ownerType === 'GSlider') {
-		if (name === 'bar' || name === 'bar_v' || name === 'grip' || name === 'title' || name === 'ani') return true;
+		return name === 'bar' || name === 'bar_v' || name === 'grip' || name === 'title' || name === 'ani';
 	}
 	return /^n\d+(?:_.*)?$/i.test(name);
 }
@@ -648,7 +610,6 @@ function normalizeTypeName(value: string): string {
 
 function collectFguiTypescriptImports(classInfo: CodegenClass, variant: FguiTypescriptVariant): string {
 	const imports = new Set<string>();
-	if (variant.runtimeImport) imports.add(variant.runtimeImport);
 	for (const member of classInfo.members) {
 		if (member.ignored) continue;
 		const translated = translateFguiTypescriptType(member.type, variant);
@@ -686,10 +647,10 @@ async function writeTextFile(fs: PublishFileSystem, filePath: string, content: s
 	await fs.writeFileRaw(filePath, encodeText(content));
 }
 
-export function encodeText(value: string): Uint8Array {
+function encodeText(value: string): Uint8Array {
 	return new TextEncoder().encode(value);
 }
 
-export function decodeText(value: Uint8Array): string {
+function decodeText(value: Uint8Array): string {
 	return new TextDecoder().decode(value);
 }

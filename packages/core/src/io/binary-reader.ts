@@ -1,65 +1,11 @@
-import { Inflate } from 'pako';
+import { inflateRaw } from 'pako';
 import { Document } from '../document.js';
 import { FGUI_MAGIC } from '../constants.js';
 import type { ImageResource } from '../properties/image-resource.js';
 import type { Package } from '../properties/package.js';
 import { ByteBuffer } from './byte-buffer.js';
 import { decodeComponentDefinition } from './component-decoder.js';
-import type { FileSystem } from './file-system.js';
-
-export interface BinaryReadLimits {
-	maxCompressedBytes: number;
-	maxDecompressedBytes: number;
-	maxCompressionRatio: number;
-}
-
-export interface BinaryReaderOptions {
-	limits?: Partial<BinaryReadLimits>;
-}
-
-const DEFAULT_BINARY_READ_LIMITS: BinaryReadLimits = {
-	maxCompressedBytes: 64 * 1024 * 1024,
-	maxDecompressedBytes: 256 * 1024 * 1024,
-	maxCompressionRatio: 200,
-};
-
-function readLimits(options: BinaryReaderOptions): BinaryReadLimits {
-	const limits = { ...DEFAULT_BINARY_READ_LIMITS, ...options.limits };
-	for (const [name, value] of Object.entries(limits)) {
-		if (!Number.isFinite(value) || value <= 0) throw new RangeError(`${name} must be a positive finite number.`);
-	}
-	return limits;
-}
-
-function inflateRawWithLimits(input: Uint8Array, limits: BinaryReadLimits): Uint8Array {
-	if (input.byteLength > limits.maxCompressedBytes) {
-		throw new Error(`FairyGUI binary compressed data exceeds ${limits.maxCompressedBytes} bytes.`);
-	}
-	const maxOutputBytes = Math.min(
-		limits.maxDecompressedBytes,
-		Math.floor(input.byteLength * limits.maxCompressionRatio),
-	);
-	const chunks: Uint8Array[] = [];
-	let outputLength = 0;
-	const inflater = new Inflate({ raw: true });
-	inflater.onData = (chunk) => {
-		if (!(chunk instanceof Uint8Array)) throw new Error('FairyGUI binary inflate returned non-binary data.');
-		outputLength += chunk.byteLength;
-		if (outputLength > maxOutputBytes) {
-			throw new Error(`FairyGUI binary decompressed data exceeds the configured ${maxOutputBytes} byte budget.`);
-		}
-		chunks.push(chunk);
-	};
-	inflater.push(input, true);
-	if (inflater.err !== 0) throw new Error(`Invalid compressed FairyGUI binary data: ${inflater.msg}`);
-	const output = new Uint8Array(outputLength);
-	let offset = 0;
-	for (const chunk of chunks) {
-		output.set(chunk, offset);
-		offset += chunk.byteLength;
-	}
-	return output;
-}
+import type { FileSystem } from './project-reader.js';
 
 /**
  * Binary item type codes as used in the .fui format.
@@ -74,9 +20,8 @@ const BinItemType = {
 	Font: 5,
 	Swf: 6,
 	Misc: 7,
-	Unknown: 8,
-	Spine: 9,
-	DragonBones: 10,
+	Spine: 8,
+	DragonBones: 9,
 } as const;
 
 type BinItemType = (typeof BinItemType)[keyof typeof BinItemType];
@@ -110,10 +55,6 @@ interface BranchAwarePackageResource {
 	setPath(path: string): unknown;
 	setBranch(branch: string): unknown;
 	setBranchItemIds(ids: string[]): unknown;
-}
-
-interface HighResolutionAwarePackageResource {
-	setHighResolutionItemIds?(ids: Array<string | null>): unknown;
 }
 
 function normalizePackageResourcePath(path: string): string {
@@ -247,7 +188,7 @@ function decodeFontGlyphs(doc: Document, resource: ReturnType<Document['createFo
 	for (let index = 0; index < glyphCount; index += 1) {
 		const chunkSize = buf.getInt16();
 		const nextPos = buf.pos + chunkSize;
-		const charId = buf.getUint16();
+		const charId = buf.getInt16();
 		const glyph = doc.createFontGlyph(`${resource.getId()}_${charId || index}`);
 		glyph
 			.setCharId(charId)
@@ -278,11 +219,9 @@ function decodeFontGlyphs(doc: Document, resource: ReturnType<Document['createFo
  */
 export class BinaryReader {
 	private readonly _fs: FileSystem;
-	private readonly _limits: BinaryReadLimits;
 
-	constructor(fs: FileSystem, options: BinaryReaderOptions = {}) {
+	constructor(fs: FileSystem) {
 		this._fs = fs;
-		this._limits = readLimits(options);
 	}
 
 	async read(filePath: string): Promise<Document> {
@@ -325,12 +264,9 @@ export class BinaryReader {
 				outer.byteOffset + outer.pos,
 				outer.byteLength - outer.pos,
 			);
-			const decompressed = inflateRawWithLimits(remaining, this._limits);
+			const decompressed = inflateRaw(remaining);
 			buf = new ByteBuffer(decompressed.buffer, 0, decompressed.byteLength);
 		} else {
-			if (outer.byteLength - outer.pos > this._limits.maxDecompressedBytes) {
-				throw new Error(`FairyGUI binary data exceeds ${this._limits.maxDecompressedBytes} bytes.`);
-			}
 			buf = outer;
 		}
 		buf.version = outer.version;
@@ -384,7 +320,6 @@ export class BinaryReader {
 		if (pkg.listResources().length > 0 || pkg.listAtlases().length > 0) {
 			throw new Error(`Package "${packageName}" (${packageId}) has already been read.`);
 		}
-		pkg.setBranchNames(packageBranches);
 		const atlasMap = new Map<string, ReturnType<Document['createAtlas']>>();
 
 		for (const dep of dependencies) {
@@ -424,8 +359,8 @@ export class BinaryReader {
 					if (scaleOpt === 1) {
 						const x = buf.getInt32(), y = buf.getInt32();
 						const w = buf.getInt32(), h = buf.getInt32();
-						const tileGridIndice = buf.getInt32();
-						res.setScaleOption(1).setScale9Grid([x, y, w, h]).setTileGridIndice(tileGridIndice);
+						buf.getInt32(); // tileGridIndice
+						res.setScaleOption(1).setScale9Grid([x, y, w, h]);
 					} else if (scaleOpt === 2) {
 						res.setScaleOption(2);
 					}
@@ -474,15 +409,6 @@ export class BinaryReader {
 					break;
 				}
 
-				case BinItemType.Swf: {
-					const res = doc.createSwfResource(itemName);
-					res.setId(itemId).setPath(itemPath).setFile(itemFile).setExported(exported);
-					res.setExtras({ ...res.getExtras(), _publishedFile: itemFile });
-					pkg.addResource(res);
-					createdResource = res;
-					break;
-				}
-
 				case BinItemType.Component: {
 					const res = doc.createComponent(itemName);
 					res.setId(itemId).setPath(itemPath).setExported(exported).setSize(width, height);
@@ -493,8 +419,6 @@ export class BinaryReader {
 						...getComponentExtras(res),
 						_rawBinary: toRawBinarySlice(rawData),
 					});
-					res._markBinaryClean();
-					doc._trackBinaryComponent();
 					pkg.addResource(res);
 					createdResource = res;
 					break;
@@ -556,6 +480,7 @@ export class BinaryReader {
 				}
 
 				default:
+					// Swf — skip item data
 					break;
 			}
 
@@ -569,15 +494,11 @@ export class BinaryReader {
 					else branchItemIds = [buf.readS() ?? ''];
 				}
 				const highResCnt = buf.getUint8();
-				const highResolutionItemIds: Array<string | null> = [];
-				for (let highResIndex = 0; highResIndex < highResCnt; highResIndex++) {
-					highResolutionItemIds.push(buf.readS());
-				}
+				if (highResCnt > 0) buf.readSArray(highResCnt);
 				if (createdResource) {
 					createdResource.setPath(itemPath);
 					createdResource.setBranch(branchName);
 					createdResource.setBranchItemIds(branchItemIds);
-					(createdResource as HighResolutionAwarePackageResource).setHighResolutionItemIds?.(highResolutionItemIds);
 				}
 			}
 
@@ -666,6 +587,71 @@ export class BinaryReader {
 			});
 		}
 
+		// Hydrate displayList child sizes from source resource dimensions.
+		// When the binary has hasSize=false for a child, FairyGUI uses the source
+		// resource's natural dimensions at runtime. We replicate this here so the
+		// restored XML contains correct size values.
+		_hydrateChildSizesFromResources(pkg);
+
 		return doc;
+	}
+}
+
+/**
+ * After all package resources are loaded, hydrate displayList child sizes from
+ * source resource dimensions. When the binary format has hasSize=false for a
+ * displayList child (GImage/GMovieClip/GComponent), FairyGUI uses the source
+ * resource's natural dimensions at runtime. We replicate this behavior here so
+ * the restored project XML contains correct size values.
+ */
+function _hydrateChildSizesFromResources(pkg: Package): void {
+	// Build a lookup map: resourceId -> { width, height }
+	const resourceSizeMap = new Map<string, { w: number; h: number }>();
+	for (const res of pkg.listResources()) {
+		const id = res.getId();
+		if (!id) continue;
+		const hasSize = 'getWidth' in res && 'getHeight' in res;
+		if (!hasSize) continue;
+		const w = (res as { getWidth(): number }).getWidth();
+		const h = (res as { getHeight(): number }).getHeight();
+		if (w > 0 || h > 0) {
+			resourceSizeMap.set(id, { w, h });
+		}
+	}
+
+	// Iterate all component resources and hydrate their displayList children
+	for (const res of pkg.listResources()) {
+		if (res.propertyType !== 'Component') continue;
+		const comp = res as unknown as {
+			listChildren(): Array<{
+				propertyType: string;
+				getSrc?(): string;
+				getWidth?(): number;
+				getHeight?(): number;
+				setSize?(w: number, h: number): unknown;
+			}>;
+		};
+		const children = comp.listChildren();
+		for (const child of children) {
+			// Only handle types that have src-based size inheritance
+			const type = child.propertyType;
+			if (type !== 'GImage' && type !== 'GMovieClip'
+				&& type !== 'GComponent' && type !== 'GButton' && type !== 'GLabel'
+				&& type !== 'GList' && type !== 'GTree' && type !== 'GComboBox'
+				&& type !== 'GProgressBar' && type !== 'GSlider' && type !== 'GScrollBar'
+				&& type !== 'GLoader3D') {
+				continue;
+			}
+			// Skip children that already have size
+			const childW = child.getWidth?.() ?? 0;
+			const childH = child.getHeight?.() ?? 0;
+			if (childW > 0 || childH > 0) continue;
+			// Look up source resource
+			const src = child.getSrc?.();
+			if (!src) continue;
+			const srcSize = resourceSizeMap.get(src);
+			if (!srcSize) continue;
+			child.setSize?.(srcSize.w, srcSize.h);
+		}
 	}
 }

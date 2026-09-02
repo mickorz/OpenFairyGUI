@@ -7,7 +7,7 @@ const defaultOptions = {
 	allowBooleanAttributes: true,
 	processEntities: true,
 	htmlEntities: true,
-	trimValues: true,
+	trimValues: false,
 	isArray: (tagName: string) => {
 		return ARRAY_TAGS.has(tagName);
 	},
@@ -28,33 +28,6 @@ const preserveOrderParser = new XMLParser({
 	...defaultOptions,
 	preserveOrder: true,
 });
-const rawPreserveOrderParser = new XMLParser({
-	...defaultOptions,
-	preserveOrder: true,
-	trimValues: false,
-});
-
-export function escapeXmlAttr(value: unknown): string {
-	return String(value)
-		.replace(/&/g, '&amp;')
-		.replace(/\r\n/g, '&#xA;')
-		.replace(/[\r\n]/g, '&#xA;')
-		.replace(/\t/g, '&#x9;')
-		.replace(/"/g, '&quot;')
-		.replace(/'/g, '&apos;')
-		.replace(/</g, '&lt;')
-		.replace(/>/g, '&gt;');
-}
-
-export function renderXmlAttrs(attrs: Record<string, unknown>): string {
-	const parts: string[] = [];
-	for (const [key, value] of Object.entries(attrs)) {
-		if (value === undefined || value === null || Array.isArray(value) || typeof value === 'object') continue;
-		const attrName = key.startsWith('@_') ? key.slice(2) : key;
-		parts.push(` ${attrName}="${escapeXmlAttr(value)}"`);
-	}
-	return parts.join('');
-}
 
 export function parseXML(xml: string): Record<string, unknown> {
 	return parser.parse(xml);
@@ -62,10 +35,6 @@ export function parseXML(xml: string): Record<string, unknown> {
 
 export function parseXMLPreserveOrder(xml: string): Array<Record<string, unknown>> {
 	return preserveOrderParser.parse(xml);
-}
-
-export function parseXMLPreserveOrderRaw(xml: string): Array<Record<string, unknown>> {
-	return rawPreserveOrderParser.parse(xml);
 }
 
 export function parseXYString(v: string | undefined): [number, number] {
@@ -137,6 +106,8 @@ const RELATION_TYPE_MAP: Record<string, number> = {
 	'middle-middle': 10,
 	'bottom-top': 11, 'bottom-middle': 12, 'bottom-bottom': 13,
 	'width-width': 14, 'height-height': 15,
+	// FairyGUI 编辑器使用的简写形式
+	'width': 14, 'height': 15,
 	'leftext-left': 16, 'leftext-right': 17,
 	'rightext-left': 18, 'rightext-right': 19,
 	'topext-top': 20, 'topext-bottom': 21,

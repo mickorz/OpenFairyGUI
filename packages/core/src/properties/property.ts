@@ -21,7 +21,6 @@ export interface IProperty {
 	extras: Record<string, unknown>;
 }
 
-type NullableStringArrayKeys<T> = { [K in keyof T]-?: T[K] extends Array<string | null> ? K : never }[keyof T];
 type UnknownRef = GraphEdge<Property, Property> | RefList<Property> | RefSet<Property> | RefMap<Property>;
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
@@ -112,19 +111,6 @@ export abstract class Property<T extends IProperty = IProperty> extends GraphNod
 		return super.set(attribute, value);
 	}
 
-	/** @hidden */
-	protected getExtendedLiteral<K extends NullableStringArrayKeys<T>>(attribute: K): T[K] {
-		return super.get(attribute as unknown as LiteralKeys<T>) as unknown as T[K];
-	}
-
-	/** @hidden */
-	protected setExtendedLiteral<K extends NullableStringArrayKeys<T>>(attribute: K, value: T[K]): this {
-		return super.set(
-			attribute as unknown as LiteralKeys<T>,
-			(value as Array<string | null>).slice() as unknown as T[LiteralKeys<T>],
-		);
-	}
-
 	public getName(): string {
 		return (this as Property).get('name');
 	}
@@ -134,11 +120,11 @@ export abstract class Property<T extends IProperty = IProperty> extends GraphNod
 	}
 
 	public getExtras(): Record<string, unknown> {
-		return structuredClone((this as Property).get('extras'));
+		return (this as Property).get('extras');
 	}
 
 	public setExtras(extras: Record<string, unknown>): this {
-		return (this as Property).set('extras', structuredClone(extras)) as this;
+		return (this as Property).set('extras', extras) as this;
 	}
 
 	public clone(): this {

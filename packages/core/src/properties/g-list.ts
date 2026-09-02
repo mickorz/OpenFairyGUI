@@ -1,10 +1,5 @@
 import { type Nullable, PropertyType, ListLayoutType, ListSelectionMode } from '../constants.js';
-import type { GComponentPropertyOverride } from './g-component.js';
 import { GObject, type IGObject } from './g-object.js';
-
-export function getDefaultListAutoResizeItem(layout: number): boolean {
-	return layout === ListLayoutType.SingleColumn || layout === ListLayoutType.SingleRow;
-}
 
 export interface GListItemData {
 	title: string | null;
@@ -16,7 +11,6 @@ export interface GListItemData {
 	level: number;
 	isFolder: boolean | null;
 	controllers?: string | null;
-	propertyOverrides?: GComponentPropertyOverride[];
 }
 
 interface XYLike {
@@ -36,9 +30,6 @@ export interface IListBase extends IGObject {
 	y: number;
 	width: number;
 	height: number;
-	pivotX: number;
-	pivotY: number;
-	anchor: boolean;
 	group: string;
 	alpha: number;
 	rotation: number;
@@ -60,7 +51,6 @@ export interface IListBase extends IGObject {
 	src: string;
 	overflow: number;
 	scrollType: number;
-	scrollBarDisplay: number;
 	scrollBarFlags: number;
 	scrollBarMargin: [number, number, number, number];
 	vtScrollBarRes: string;
@@ -71,9 +61,13 @@ export interface IListBase extends IGObject {
 	clipSoftness: [number, number];
 	scrollItemToViewOnClick: boolean;
 	foldInvisibleItems: boolean;
-	autoClearItems: boolean;
 	listItems: GListItemData[];
 	pageController: string;
+	pivotX: number;
+	pivotY: number;
+	anchor: boolean;
+	scaleX: number;
+	scaleY: number;
 	controllerOverrides: string;
 	selectionController: string;
 }
@@ -98,9 +92,6 @@ export class GListBase<
 			y: 0,
 			width: 0,
 			height: 0,
-			pivotX: 0,
-			pivotY: 0,
-			anchor: false,
 			group: '',
 			alpha: 1,
 			rotation: 0,
@@ -116,13 +107,12 @@ export class GListBase<
 			columnCount: 0,
 			selectionMode: ListSelectionMode.Single,
 			defaultItem: '',
-			autoResizeItem: getDefaultListAutoResizeItem(ListLayoutType.SingleColumn),
+			autoResizeItem: true,
 			childrenRenderOrder: 0,
 			apexIndex: 0,
 			src: '',
 			overflow: 0,
 			scrollType: 1,
-			scrollBarDisplay: 0,
 			scrollBarFlags: 0,
 			scrollBarMargin: [0, 0, 0, 0] as [number, number, number, number],
 			vtScrollBarRes: '',
@@ -133,8 +123,12 @@ export class GListBase<
 			clipSoftness: [0, 0] as [number, number],
 			scrollItemToViewOnClick: true,
 			foldInvisibleItems: false,
-			autoClearItems: false,
 			listItems: [] as GListItemData[],
+			pivotX: 0,
+			pivotY: 0,
+			anchor: false,
+			scaleX: 1,
+			scaleY: 1,
 			pageController: '',
 			controllerOverrides: '',
 			selectionController: '',
@@ -176,6 +170,12 @@ export class GListBase<
 		this.setListProp('pivotX', x);
 		this.setListProp('pivotY', y);
 		return this.setListProp('anchor', anchor);
+	}
+	public getScaleX(): number { return this.getListProp('scaleX'); }
+	public getScaleY(): number { return this.getListProp('scaleY'); }
+	public setScale(x: number, y: number): this {
+		this.setListProp('scaleX', x);
+		return this.setListProp('scaleY', y);
 	}
 	public setPivotAsAnchor(v: boolean): this { return this.setListProp('anchor', v); }
 
@@ -238,9 +238,6 @@ export class GListBase<
 
 	public getScrollType(): number { return this.getListProp('scrollType'); }
 	public setScrollType(v: number): this { return this.setListProp('scrollType', v); }
-
-	public getScrollBarDisplay(): number { return this.getListProp('scrollBarDisplay'); }
-	public setScrollBarDisplay(v: number): this { return this.setListProp('scrollBarDisplay', v); }
 
 	public getScrollBarFlags(): number { return this.getListProp('scrollBarFlags'); }
 	public setScrollBarFlags(v: number): this { return this.setListProp('scrollBarFlags', v); }
@@ -314,9 +311,6 @@ export class GListBase<
 
 	public getFoldInvisibleItems(): boolean { return this.getListProp('foldInvisibleItems'); }
 	public setFoldInvisibleItems(v: boolean): this { return this.setListProp('foldInvisibleItems', v); }
-
-	public getAutoClearItems(): boolean { return this.getListProp('autoClearItems'); }
-	public setAutoClearItems(v: boolean): this { return this.setListProp('autoClearItems', v); }
 
 	public getListItems(): GListItemData[] { return this.get('listItems' as never) as GListItemData[]; }
 	public setListItems(v: GListItemData[]): this { return this.set('listItems' as never, v as never); }

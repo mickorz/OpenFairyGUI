@@ -10,7 +10,6 @@ interface IMiscResource extends IExtensibleProperty {
 	branchItemIds: string[];
 	file: string;
 	exported: boolean;
-	favorite: boolean;
 	resourceData: Ref<FairyBuffer>;
 }
 
@@ -33,7 +32,6 @@ export class MiscResource extends ExtensibleProperty<IMiscResource> {
 			branchItemIds: [],
 			file: '',
 			exported: false,
-			favorite: false,
 			resourceData: null,
 		});
 	}
@@ -56,13 +54,6 @@ export class MiscResource extends ExtensibleProperty<IMiscResource> {
 	public getExported(): boolean { return this.get('exported'); }
 	public setExported(v: boolean): this { return this.set('exported', v); }
 
-	public getFavorite(): boolean { return this.get('favorite'); }
-	public setFavorite(v: boolean): this { return this.set('favorite', v); }
-
 	public getResourceData(): FairyBuffer | null { return this.getRef('resourceData' as never) as FairyBuffer | null; }
 	public setResourceData(buffer: FairyBuffer | null): this { return this.setRef('resourceData' as never, buffer as never); }
-
-	/** Primary source-file bytes for this miscellaneous resource. */
-	public getSourceData(): FairyBuffer | null { return this.getResourceData(); }
-	public setSourceData(buffer: FairyBuffer | null): this { return this.setResourceData(buffer); }
 }

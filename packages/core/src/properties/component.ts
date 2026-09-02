@@ -17,19 +17,12 @@ interface EdgeInsetsLike {
 	right: number;
 }
 
-export interface ComponentCustomProperty {
-	target: string;
-	propertyId: 0 | 1;
-	label: string;
-}
-
 interface IComponent extends IExtensibleProperty {
 	id: string;
 	path: string;
 	branch: string;
 	branchItemIds: string[];
 	exported: boolean;
-	favorite: boolean;
 	width: number;
 	height: number;
 	minWidth: number;
@@ -61,13 +54,9 @@ interface IComponent extends IExtensibleProperty {
 	designImageLayer: number;
 	designImageOffsetX: number;
 	designImageOffsetY: number;
-	designImage: string;
-	designImageForTest: boolean;
-	pageController: string;
 	idNum: number;
 	initName: string;
 	remark: string;
-	customExtensionId: string;
 	extensionType: string;
 	buttonMode: number;
 	sound: string;
@@ -84,9 +73,7 @@ interface IComponent extends IExtensibleProperty {
 	wholeNumbers: boolean;
 	changeOnClick: boolean;
 	fixedGripSize: boolean;
-	autoClearItems: boolean;
 	opaque: boolean;
-	customProperties: ComponentCustomProperty[];
 	childrenRenderOrder: number;
 	apexIndex: number;
 	relations: RelationDef[];
@@ -106,27 +93,9 @@ interface IComponent extends IExtensibleProperty {
  */
 export class Component extends ExtensibleProperty<IComponent> {
 	public declare propertyType: PropertyType.COMPONENT;
-	private _binaryDirty = true;
 
 	protected init(): void {
 		this.propertyType = PropertyType.COMPONENT;
-	}
-
-	/** @internal */
-	public _markBinaryClean(): this {
-		this._binaryDirty = false;
-		return this;
-	}
-
-	/** @internal */
-	public _markBinaryDirty(): this {
-		this._binaryDirty = true;
-		return this;
-	}
-
-	/** @internal */
-	public _isBinaryDirty(): boolean {
-		return this._binaryDirty;
 	}
 
 	protected getDefaults(): Nullable<IComponent> {
@@ -136,7 +105,6 @@ export class Component extends ExtensibleProperty<IComponent> {
 			branch: '',
 			branchItemIds: [],
 			exported: false,
-			favorite: false,
 			width: 0,
 			height: 0,
 			minWidth: 0,
@@ -164,17 +132,13 @@ export class Component extends ExtensibleProperty<IComponent> {
 			footerRes: '',
 			bgColor: '',
 			bgColorEnabled: false,
-			designImageAlpha: 50,
+			designImageAlpha: 0,
 			designImageLayer: 0,
 			designImageOffsetX: 0,
 			designImageOffsetY: 0,
-			designImage: '',
-			designImageForTest: false,
-			pageController: '',
 			idNum: 0,
 			initName: '',
 			remark: '',
-			customExtensionId: '',
 			extensionType: '',
 			buttonMode: 0,
 			sound: '',
@@ -191,9 +155,7 @@ export class Component extends ExtensibleProperty<IComponent> {
 			wholeNumbers: false,
 			changeOnClick: true,
 			fixedGripSize: false,
-			autoClearItems: false,
 			opaque: true,
-			customProperties: [],
 			childrenRenderOrder: ChildrenRenderOrder.Ascent,
 			apexIndex: 0,
 			relations: [],
@@ -217,9 +179,6 @@ export class Component extends ExtensibleProperty<IComponent> {
 
 	public getExported(): boolean { return this.get('exported'); }
 	public setExported(v: boolean): this { return this.set('exported', v); }
-
-	public getFavorite(): boolean { return this.get('favorite'); }
-	public setFavorite(v: boolean): this { return this.set('favorite', v); }
 
 	public getWidth(): number { return this.get('width'); }
 	public getHeight(): number { return this.get('height'); }
@@ -347,15 +306,6 @@ export class Component extends ExtensibleProperty<IComponent> {
 	public getDesignImageOffsetY(): number { return this.get('designImageOffsetY'); }
 	public setDesignImageOffsetY(v: number): this { return this.set('designImageOffsetY', v); }
 
-	public getDesignImage(): string { return this.get('designImage'); }
-	public setDesignImage(v: string): this { return this.set('designImage', v); }
-
-	public getDesignImageForTest(): boolean { return this.get('designImageForTest'); }
-	public setDesignImageForTest(v: boolean): this { return this.set('designImageForTest', v); }
-
-	public getPageController(): string { return this.get('pageController'); }
-	public setPageController(v: string): this { return this.set('pageController', v); }
-
 	public getIdNum(): number { return this.get('idNum'); }
 	public setIdNum(v: number): this { return this.set('idNum', v); }
 
@@ -364,9 +314,6 @@ export class Component extends ExtensibleProperty<IComponent> {
 
 	public getRemark(): string { return this.get('remark'); }
 	public setRemark(v: string): this { return this.set('remark', v); }
-
-	public getCustomExtensionId(): string { return this.get('customExtensionId'); }
-	public setCustomExtensionId(v: string): this { return this.set('customExtensionId', v); }
 
 	public getExtensionType(): string { return this.get('extensionType'); }
 	public setExtensionType(v: string): this { return this.set('extensionType', v); }
@@ -416,22 +363,8 @@ export class Component extends ExtensibleProperty<IComponent> {
 	public getFixedGripSize(): boolean { return this.get('fixedGripSize'); }
 	public setFixedGripSize(v: boolean): this { return this.set('fixedGripSize', v); }
 
-	public getAutoClearItems(): boolean { return this.get('autoClearItems'); }
-	public setAutoClearItems(v: boolean): this { return this.set('autoClearItems', v); }
-
 	public getOpaque(): boolean { return this.get('opaque'); }
 	public setOpaque(v: boolean): this { return this.set('opaque', v); }
-
-	public getCustomProperties(): ComponentCustomProperty[] {
-		const properties = this.get('customProperties' as never) as ComponentCustomProperty[];
-		return properties.map((property) => ({ ...property }));
-	}
-	public setCustomProperties(properties: ComponentCustomProperty[]): this {
-		return this.set(
-			'customProperties' as never,
-			properties.map((property) => ({ ...property })) as never,
-		);
-	}
 
 	public getChildrenRenderOrder(): number { return this.get('childrenRenderOrder'); }
 	public setChildrenRenderOrder(v: number): this { return this.set('childrenRenderOrder', v); }

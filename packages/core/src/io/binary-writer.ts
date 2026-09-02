@@ -7,7 +7,7 @@ import type { ImageResource } from '../properties/image-resource.js';
 import { FGUI_MAGIC } from '../constants.js';
 import { WriteBuffer } from './write-buffer.js';
 import { encodeComponent } from './component-encoder.js';
-import type { FileSystem } from './file-system.js';
+import type { FileSystem } from './project-reader.js';
 
 /**
  * Binary item type codes matching the .fui format.
@@ -20,11 +20,9 @@ const BinItemType = {
 	Component: 3,
 	Atlas: 4,
 	Font: 5,
-	Swf: 6,
 	Misc: 7,
-	Unknown: 8,
-	Spine: 9,
-	DragonBones: 10,
+	Spine: 8,
+	DragonBones: 9,
 } as const;
 
 /**
@@ -39,7 +37,6 @@ const EDITOR_TYPE_STRING: Record<string, string> = {
 	SoundResource: 'sound',
 	Component: 'component',
 	FontResource: 'font',
-	SwfResource: 'swf',
 	SpineResource: 'spine',
 	DragonBonesResource: 'dragonbones',
 };
@@ -181,10 +178,6 @@ interface BranchAwareBinaryItem {
 	getBranchItemIds?(): string[];
 }
 
-interface HighResolutionBinaryItem {
-	getHighResolutionItemIds?(): Array<string | null>;
-}
-
 /**
  * Sort resources to match editor binary output order.
  * Editor sorts: non-exported first, then alphabetical by type, then by ID.
@@ -268,10 +261,7 @@ export class BinaryWriter {
 				name: dep.getName(),
 			}))
 			.filter((dep) => !!dep.id);
-		const declaredBranchNames = pkg.listBranchNames();
-		const branchNames = includeBranches
-			? (declaredBranchNames.length > 0 ? declaredBranchNames : getPackageBranchNames(doc, resources))
-			: [];
+		const branchNames = includeBranches ? getPackageBranchNames(doc, resources) : [];
 		const branchItemIdsMap = buildBranchItemIdsMap(pkg, branchNames);
 		const publishedItemIdMap = new Map(resources.map((resource) => [resource.getId(), getPublishedItemId(resource)]));
 
@@ -384,7 +374,7 @@ export class BinaryWriter {
 						data.writeInt32(grid[1]);
 						data.writeInt32(grid[2]);
 						data.writeInt32(grid[3]);
-						data.writeInt32(res.getTileGridIndice());
+						data.writeInt32(0); // tileGridIndice
 					}
 					data.writeBool(res.getSmoothing());
 					break;
@@ -440,17 +430,6 @@ export class BinaryWriter {
 					data.writeInt32(0);
 					break;
 				}
-				case 'SwfResource': {
-					data.writeUint8(BinItemType.Swf);
-					data.writeS(getPublishedItemId(res));
-					data.writeS(res.getName());
-					data.writeS(res.getPath());
-					data.writeS(getPublishedFileName(res));
-					data.writeBool(res.getExported());
-					data.writeInt32(0);
-					data.writeInt32(0);
-					break;
-				}
 				case 'Component': {
 					data.writeUint8(BinItemType.Component);
 					data.writeS(getPublishedItemId(res));
@@ -468,7 +447,7 @@ export class BinaryWriter {
 					const compExtras = res.getExtras() as ComponentBinaryExtras;
 					const extType = (res as ComponentWithExtensionType).getExtensionType?.() ?? compExtras.extensionType;
 					data.writeUint8(extType ? (extTypeMap[extType] ?? 0) : 0);
-					if (compExtras?._rawBinary && !res._isBinaryDirty()) {
+					if (compExtras?._rawBinary) {
 						// From BinaryReader round-trip: use stored raw binary
 						data.writeBuffer(toUint8Array(compExtras._rawBinary));
 					} else {
@@ -573,11 +552,7 @@ export class BinaryWriter {
 				for (const branchItemId of branchItemIds) {
 					data.writeSEx(branchItemId || null);
 				}
-				const highResolutionItemIds = getItemHighResolutionItemIds(res, publishedItemIdMap, packageItemIds);
-				data.writeUint8(highResolutionItemIds.length);
-				for (const highResolutionItemId of highResolutionItemIds) {
-					data.writeS(highResolutionItemId);
-				}
+				data.writeUint8(0); // highResCount
 			}
 
 			// Patch nextPos offset
@@ -614,20 +589,13 @@ export class BinaryWriter {
 				// - trimmed sprites keep offset + original size
 				// - fully transparent direct-output package items keep a 0x0 rect with original size
 				// - generated movieclip frame sprites only emit this payload when they carry trim offsets
-				const originalWidth = ow || (sp.rotated ? sp.h : sp.w);
-				const originalHeight = oh || (sp.rotated ? sp.w : sp.h);
-				const hasOriginal = (isPackageItemSprite && sp.rotated)
-					|| ox !== 0
-					|| oy !== 0
-					|| originalWidth !== (sp.rotated ? sp.h : sp.w)
-					|| originalHeight !== (sp.rotated ? sp.w : sp.h)
-					|| isZeroSizedDirectOutput;
+				const hasOriginal = (isPackageItemSprite && sp.rotated) || ox !== 0 || oy !== 0 || isZeroSizedDirectOutput;
 				data.writeBool(hasOriginal);
 				if (hasOriginal) {
 					data.writeInt32(ox);
 					data.writeInt32(oy);
-					data.writeInt32(originalWidth);
-					data.writeInt32(originalHeight);
+					data.writeInt32(ow || (sp.rotated ? sp.h : sp.w));
+					data.writeInt32(oh || (sp.rotated ? sp.w : sp.h));
 				}
 			}
 
@@ -893,7 +861,7 @@ function _encodeFontGlyphs(
 		const glyphStart = buf.pos;
 		buf.writeInt16(0); // placeholder for chunk size
 
-		buf.writeUint16(glyph.charId);
+		buf.writeInt16(glyph.charId);
 		buf.writeS(glyph.img);
 		buf.writeInt32(glyph.x);
 		buf.writeInt32(glyph.y);
@@ -947,17 +915,15 @@ function getItemBranchName(item: BinaryPackageItem): string {
 }
 
 function getPackageBranchNames(doc: Document, resources: PackageResource[]): string[] {
-	const packageBranchNames = new Set(
+	const packageBranchSet = new Set(
 		resources
 			.map((resource) => getItemBranchName(resource))
 			.filter((branchName) => !!branchName),
 	);
-	const rootBranchNames = doc.getRoot().listBranches();
-	const unknownBranchName = [...packageBranchNames].find((branchName) => !rootBranchNames.includes(branchName));
-	if (unknownBranchName) {
-		throw new Error(`Package resource references unknown branch "${unknownBranchName}".`);
+	if (packageBranchSet.size === 0) {
+		return [];
 	}
-	return rootBranchNames.filter((branchName) => packageBranchNames.has(branchName));
+	return doc.getRoot().listBranches().filter((branchName) => packageBranchSet.has(branchName));
 }
 
 function buildBranchResourceKey(resource: BinaryPackageItem): string {
@@ -1018,24 +984,6 @@ function getItemBranchItemIds(
 	const inferred = branchItemIdsMap.get(buildBranchResourceKey(item));
 	if (!inferred) return [];
 	return inferred.some((value) => !!value) ? [...inferred] : [];
-}
-
-function getItemHighResolutionItemIds(
-	item: BinaryPackageItem,
-	publishedItemIdMap: Map<string, string>,
-	packageItemIds: Set<string>,
-): Array<string | null> {
-	const highResolutionAware = item as HighResolutionBinaryItem;
-	const rawIds = highResolutionAware.getHighResolutionItemIds?.() ?? [];
-	const resolvedIds = rawIds.map((id) => {
-		if (!id) return null;
-		const publishedId = publishedItemIdMap.get(id) ?? id;
-		return packageItemIds.has(publishedId) ? publishedId : null;
-	});
-	while (resolvedIds.length > 0 && !resolvedIds[resolvedIds.length - 1]) {
-		resolvedIds.pop();
-	}
-	return resolvedIds;
 }
 
 function getAtlasId(atlas: Atlas): string {

@@ -1,7 +1,6 @@
 import test from 'ava';
 import { getFixturePath } from '@openfairygui/test-utils';
-import { type Document, PropertyType } from '../src/index.js';
-import { NodeIO } from '../src/node.js';
+import { type Document, NodeIO, PropertyType } from '../src/index.js';
 
 const BASICS_FUI = getFixturePath(
 	'FairyGUI-unity',
@@ -34,10 +33,7 @@ test('binary: reads without error', async (t) => {
 test('binary: package is created with non-empty id and name', async (t) => {
 	const doc = await getDoc();
 	const pkg = getMainPackage(doc);
-	if (!pkg) {
-		t.fail('main package exists');
-		return;
-	}
+	t.truthy(pkg, 'main package exists');
 	t.truthy(pkg.getId(), 'package has non-empty id');
 	t.truthy(pkg.getName(), 'package has non-empty name');
 });

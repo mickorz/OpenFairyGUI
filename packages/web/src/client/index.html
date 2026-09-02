@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+	<meta charset="UTF-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<title>OpenFairyGUI Web UI</title>
+	<link rel="stylesheet" href="style.css">
+</head>
+<body>
+	<!-- 顶部栏 -->
+	<header class="header">
+		<div class="header-title">OpenFairyGUI Web UI</div>
+		<div class="header-info">端口: <span id="port">3210</span></div>
+	</header>
+
+	<!-- Tab 导航 -->
+	<nav class="tabs">
+		<button class="tab active" data-tab="publish">发布</button>
+		<button class="tab" data-tab="restore">还原</button>
+		<button class="tab" data-tab="inspect">检查</button>
+		<button class="tab" data-tab="fonts">字体</button>
+	</nav>
+
+	<!-- 主内容区 -->
+	<main class="main">
+		<!-- 发布 Tab -->
+		<section class="tab-panel active" id="panel-publish">
+			<div class="form-group">
+				<label>输入项目</label>
+				<div class="input-row">
+					<input type="text" id="publish-inputPath" placeholder="选择 FairyGUI 项目目录或 .fairy 文件">
+					<button class="btn-browse" data-target="publish-inputPath">浏览...</button>
+				</div>
+			</div>
+			<div class="form-group">
+				<label>输出目录</label>
+				<div class="input-row">
+					<input type="text" id="publish-outputPath" placeholder="选择发布输出目录">
+					<button class="btn-browse" data-target="publish-outputPath">浏览...</button>
+				</div>
+			</div>
+			<div class="form-row">
+				<div class="form-check">
+					<input type="checkbox" id="publish-compressed">
+					<label for="publish-compressed">压缩二进制</label>
+				</div>
+				<div class="form-check">
+					<input type="checkbox" id="publish-noAtlas">
+					<label for="publish-noAtlas">跳过图集</label>
+				</div>
+			</div>
+			<div class="form-row">
+				<div class="form-group flex-1">
+					<label>包名过滤</label>
+					<input type="text" id="publish-packages" placeholder="逗号分隔，留空为全部">
+				</div>
+				<div class="form-group flex-1">
+					<label>分支名</label>
+					<input type="text" id="publish-branch" placeholder="留空为主分支">
+				</div>
+			</div>
+			<div class="form-row">
+				<div class="form-group flex-1">
+					<label>项目类型</label>
+					<select id="publish-projectType">
+						<option value="">默认</option>
+						<option value="unity">Unity</option>
+						<option value="layabox">LayaBox</option>
+						<option value="cocoscreator">CocosCreator</option>
+						<option value="egret">Egret</option>
+						<option value="flash">Flash</option>
+						<option value="pixi">Pixi</option>
+						<option value="unreal">Unreal</option>
+					</select>
+				</div>
+				<div class="form-group flex-1">
+					<label>最大图集尺寸</label>
+					<input type="number" id="publish-maxAtlasSize" placeholder="2048" value="2048">
+				</div>
+			</div>
+			<button class="btn-run" id="btn-publish">执行发布</button>
+		</section>
+
+		<!-- 还原 Tab -->
+		<section class="tab-panel" id="panel-restore">
+			<div class="form-group">
+				<label>输入目录</label>
+				<div class="input-row">
+					<input type="text" id="restore-inputPath" placeholder="选择发布二进制所在目录">
+					<button class="btn-browse" data-target="restore-inputPath">浏览...</button>
+				</div>
+			</div>
+			<div class="form-group">
+				<label>输出目录</label>
+				<div class="input-row">
+					<input type="text" id="restore-outputPath" placeholder="选择还原项目输出目录">
+					<button class="btn-browse" data-target="restore-outputPath">浏览...</button>
+				</div>
+			</div>
+			<div class="form-row">
+				<div class="form-check">
+					<input type="checkbox" id="restore-force">
+					<label for="restore-force">覆盖已有目录</label>
+				</div>
+			</div>
+			<div class="form-row">
+				<div class="form-group flex-1">
+					<label>包名过滤</label>
+					<input type="text" id="restore-packages" placeholder="逗号分隔，留空为全部">
+				</div>
+				<div class="form-group flex-1">
+					<label>项目类型</label>
+					<select id="restore-projectType">
+						<option value="">默认 (Unity)</option>
+						<option value="unity">Unity</option>
+						<option value="layabox">LayaBox</option>
+						<option value="cocoscreator">CocosCreator</option>
+						<option value="egret">Egret</option>
+					</select>
+				</div>
+			</div>
+			<div class="form-row">
+				<div class="form-group flex-1">
+					<label>字体目录</label>
+					<div class="input-row">
+						<input type="text" id="restore-fontDir" placeholder="包含 .ttf 字体文件的目录">
+						<button class="btn-browse" data-target="restore-fontDir">浏览...</button>
+					</div>
+				</div>
+				<div class="form-group flex-1">
+					<label>语言目录</label>
+					<div class="input-row">
+						<input type="text" id="restore-langDir" placeholder="包含本地化 txt 文件的目录">
+						<button class="btn-browse" data-target="restore-langDir">浏览...</button>
+					</div>
+				</div>
+			</div>
+			<button class="btn-run" id="btn-restore">执行还原</button>
+		</section>
+
+		<!-- 检查 Tab -->
+		<section class="tab-panel" id="panel-inspect">
+			<div class="form-group">
+				<label>输入项目</label>
+				<div class="input-row">
+					<input type="text" id="inspect-inputPath" placeholder="选择 FairyGUI 项目目录或 .fairy 文件">
+					<button class="btn-browse" data-target="inspect-inputPath">浏览...</button>
+				</div>
+			</div>
+			<button class="btn-run" id="btn-inspect">执行检查</button>
+			<div id="inspect-result" class="result-area"></div>
+		</section>
+
+		<!-- 字体 Tab -->
+		<section class="tab-panel" id="panel-fonts">
+			<div class="form-group">
+				<label>输入目录</label>
+				<div class="input-row">
+					<input type="text" id="fonts-inputPath" placeholder="选择发布二进制所在目录">
+					<button class="btn-browse" data-target="fonts-inputPath">浏览...</button>
+				</div>
+			</div>
+			<div class="form-group">
+				<label>包名过滤</label>
+				<input type="text" id="fonts-packages" placeholder="逗号分隔，留空为全部">
+			</div>
+			<button class="btn-run" id="btn-fonts">列出字体</button>
+			<div id="fonts-result" class="result-area"></div>
+		</section>
+	</main>
+
+	<!-- 日志面板 -->
+	<section class="log-section">
+		<div class="log-header">
+			<span class="log-title">日志输出</span>
+			<div class="log-actions">
+				<button class="btn-sm" id="btn-copy-log">复制</button>
+				<button class="btn-sm" id="btn-save-log">保存日志</button>
+				<button class="btn-sm" id="btn-clear-log">清空</button>
+			</div>
+		</div>
+		<div class="log-panel" id="log-panel"></div>
+	</section>
+
+	<script src="app.js"></script>
+</body>
+</html>

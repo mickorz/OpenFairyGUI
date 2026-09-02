@@ -49,10 +49,8 @@ const defineNode = (
 
 const PACKAGE_DESCRIPTION_ATTRS = {
 	id: { canonical: 'id' },
-	hasFavorites: { canonical: 'hasFavorites' },
 	compressPNG: { canonical: 'compressPNG' },
 	jpegQuality: { canonical: 'jpegQuality' },
-	branchNames: { canonical: 'branchNames' },
 } satisfies XmlAttrMap;
 
 const BRANCH_DESCRIPTION_ATTRS = {} satisfies XmlAttrMap;
@@ -64,21 +62,11 @@ const PACKAGE_PUBLISH_ATTRS = {
 	packageCount: { canonical: 'packageCount' },
 	genCode: { canonical: 'genCode' },
 	codePath: { canonical: 'codePath' },
-	maxAtlasSize: { canonical: 'maxAtlasSize' },
-	sizeOption: { canonical: 'sizeOption' },
-	npot: { canonical: 'npot' },
-	square: { canonical: 'square' },
-	rotation: { canonical: 'rotation' },
-	multiPage: { canonical: 'multiPage' },
-	extractAlpha: { canonical: 'extractAlpha' },
-	maxAtlasIndex: { canonical: 'maxAtlasIndex' },
-	excluded: { canonical: 'excluded' },
 } satisfies XmlAttrMap;
 
 const PACKAGE_PUBLISH_ATLAS_ATTRS = {
 	name: { canonical: 'name' },
 	index: { canonical: 'index' },
-	compression: { canonical: 'compression' },
 } satisfies XmlAttrMap;
 
 const PACKAGE_RESOURCE_BASE_ATTRS = {
@@ -86,15 +74,6 @@ const PACKAGE_RESOURCE_BASE_ATTRS = {
 	name: { canonical: 'name' },
 	path: { canonical: 'path' },
 	exported: { canonical: 'exported' },
-	favorite: { canonical: 'favorite' },
-} satisfies XmlAttrMap;
-
-const PACKAGE_RESOURCE_FOLDER_ATTRS = {
-	id: PACKAGE_RESOURCE_BASE_ATTRS.id,
-	name: PACKAGE_RESOURCE_BASE_ATTRS.name,
-	path: PACKAGE_RESOURCE_BASE_ATTRS.path,
-	favorite: PACKAGE_RESOURCE_BASE_ATTRS.favorite,
-	atlas: { canonical: 'atlas' },
 } satisfies XmlAttrMap;
 
 const PACKAGE_IMAGE_RESOURCE_ATTRS = {
@@ -105,7 +84,6 @@ const PACKAGE_IMAGE_RESOURCE_ATTRS = {
 	height: { canonical: 'height' },
 	gridTile: { canonical: 'gridTile' },
 	qualityOption: { canonical: 'qualityOption' },
-	quality: { canonical: 'quality' },
 	duplicatePadding: { canonical: 'duplicatePadding' },
 	smoothing: { canonical: 'smoothing' },
 } satisfies XmlAttrMap;
@@ -116,10 +94,10 @@ const PACKAGE_FONT_RESOURCE_ATTRS = {
 	samplePointSize: { canonical: 'samplePointSize' },
 } satisfies XmlAttrMap;
 
-const PACKAGE_MOVIE_CLIP_RESOURCE_ATTRS = {
-	atlas: { canonical: 'atlas' },
-	smoothing: { canonical: 'smoothing' },
-} satisfies XmlAttrMap;
+	const PACKAGE_MOVIECLIP_RESOURCE_ATTRS = {
+		width: { canonical: 'width' },
+		height: { canonical: 'height' },
+	} satisfies XmlAttrMap;
 
 const PACKAGE_SKELETON_RESOURCE_ATTRS = {
 	width: { canonical: 'width' },
@@ -164,10 +142,6 @@ const SCALE_ATTRS = {
 	scale: { canonical: 'scale' },
 } satisfies XmlAttrMap;
 
-const SKEW_ATTRS = {
-	skew: { canonical: 'skew' },
-} satisfies XmlAttrMap;
-
 const GROUP_REF_ATTRS = {
 	group: { canonical: 'group' },
 } satisfies XmlAttrMap;
@@ -189,13 +163,6 @@ const GRAYED_ATTRS = {
 	grayed: { canonical: 'grayed' },
 } satisfies XmlAttrMap;
 
-const COMMON_DISPLAY_STATE_ATTRS = mergeAttrs(
-	ROTATION_ALPHA_ATTRS,
-	VISIBLE_ATTRS,
-	TOUCHABLE_ATTRS,
-	GRAYED_ATTRS,
-);
-
 const INSTANCE_MISC_PANEL_ATTRS = {
 	tooltips: { canonical: 'tooltips' },
 	customData: { canonical: 'customData' },
@@ -210,25 +177,6 @@ const FILTER_ATTRS = {
 	filter: { canonical: 'filter' },
 	filterData: { canonical: 'filterData' },
 } satisfies XmlAttrMap;
-
-const BLEND_ATTRS = {
-	blendMode: { canonical: 'blend' },
-} satisfies XmlAttrMap;
-
-const COMMON_DISPLAY_OBJECT_ATTRS = mergeAttrs(
-	XY_SIZE_ATTRS,
-	LOCKED_ATTRS,
-	RESTRICT_SIZE_ATTRS,
-	ASPECT_ATTRS,
-	PIVOT_ATTRS,
-	ANCHOR_ATTRS,
-	SCALE_ATTRS,
-	SKEW_ATTRS,
-	COMMON_DISPLAY_STATE_ATTRS,
-	INSTANCE_MISC_PANEL_ATTRS,
-	BLEND_ATTRS,
-	FILTER_ATTRS,
-);
 
 const ROOT_COMPONENT_PANEL_ATTRS = {
 	size: { canonical: 'size' },
@@ -254,10 +202,6 @@ const ROOT_COMPONENT_PANEL_ATTRS = {
 	bgColorEnabled: { canonical: 'bgColorEnabled' },
 	idnum: { canonical: 'idnum' },
 	initName: { canonical: 'initName' },
-	customExtention: { canonical: 'customExtention' },
-	pageController: { canonical: 'pageController' },
-	showSound: { canonical: 'showSound' },
-	hideSound: { canonical: 'hideSound' },
 } satisfies XmlAttrMap;
 
 const ROOT_MISC_PANEL_ATTRS = {
@@ -265,8 +209,6 @@ const ROOT_MISC_PANEL_ATTRS = {
 } satisfies XmlAttrMap;
 
 const ROOT_DESIGN_PANEL_ATTRS = {
-	designImage: { canonical: 'designImage' },
-	designImageForTest: { canonical: 'designImageForTest' },
 	designImageAlpha: { canonical: 'designImageAlpha' },
 	designImageLayer: { canonical: 'designImageLayer' },
 	designImageOffsetX: { canonical: 'designImageOffsetX' },
@@ -290,6 +232,7 @@ const IMAGE_PANEL_ATTRS = {
 } satisfies XmlAttrMap;
 
 const GRAPH_PANEL_ATTRS = {
+	skew: { canonical: 'skew' },
 	type: { canonical: 'type' },
 	lineSize: { canonical: 'lineSize' },
 	lineColor: { canonical: 'lineColor' },
@@ -316,7 +259,6 @@ const LOADER_PANEL_ATTRS = {
 	shrinkOnly: { canonical: 'shrinkOnly' },
 	autoSize: { canonical: 'autoSize' },
 	useResize: { canonical: 'useResize' },
-	errorSign: { canonical: 'errorSign' },
 	color: { canonical: 'color' },
 	playing: { canonical: 'playing' },
 	frame: { canonical: 'frame' },
@@ -340,7 +282,6 @@ const LOADER3D_PANEL_ATTRS = {
 	frame: { canonical: 'frame' },
 	loop: { canonical: 'loop' },
 	color: { canonical: 'color' },
-	clearOnPublish: { canonical: 'clearOnPublish' },
 } satisfies XmlAttrMap;
 
 const TEXT_PANEL_ATTRS = {
@@ -367,9 +308,10 @@ const TEXT_PANEL_ATTRS = {
 	autoClearText: { canonical: 'autoClearText' },
 	demoText: { canonical: 'demoText' },
 	faceDilate: { canonical: 'faceDilate' },
-	outlineSoftness: { canonical: 'outlineSoftness' },
 	underlaySoftness: { canonical: 'underlaySoftness' },
 	vars: { canonical: 'vars' },
+	pivot: { canonical: 'pivot' },
+	anchor: { canonical: 'anchor' },
 } satisfies XmlAttrMap;
 
 const TEXT_INPUT_PANEL_ATTRS = {
@@ -382,7 +324,6 @@ const TEXT_INPUT_PANEL_ATTRS = {
 
 const RICH_TEXT_PANEL_ATTRS = {
 	restrictSize: { canonical: 'restrictSize' },
-	outlineSoftness: { canonical: 'outlineSoftness' },
 	underlaySoftness: { canonical: 'underlaySoftness' },
 } satisfies XmlAttrMap;
 
@@ -403,11 +344,8 @@ const LIST_PANEL_ATTRS = {
 	vAlign: { canonical: 'vAlign' },
 	lineGap: { canonical: 'lineGap' },
 	columnGap: { canonical: 'colGap', aliases: ['columnGap'] },
-	lineItemCount: { canonical: 'lineItemCount' },
-	lineItemCount2: { canonical: 'lineItemCount2' },
+	lineCount: { canonical: 'lineItemCount', aliases: ['lineCount'] },
 	autoResizeItem: { canonical: 'autoItemSize', aliases: ['autoResizeItem'] },
-	childrenRenderOrder: { canonical: 'renderOrder' },
-	apexIndex: { canonical: 'apex' },
 	selectionMode: { canonical: 'selectionMode' },
 	selectionController: { canonical: 'selectionController' },
 	defaultItem: { canonical: 'defaultItem' },
@@ -426,14 +364,12 @@ const LIST_PANEL_ATTRS = {
 	indent: { canonical: 'indent' },
 	clickToExpand: { canonical: 'clickToExpand' },
 	autoClearItems: { canonical: 'autoClearItems' },
-	scrollItemToViewOnClick: { canonical: 'scrollItemToViewOnClick' },
-	foldInvisibleItems: { canonical: 'foldInvisibleItems' },
 } satisfies XmlAttrMap;
 
 const BUTTON_EXTENSION_ATTRS = {
 	mode: { canonical: 'mode' },
 	sound: { canonical: 'sound' },
-	soundVolumeScale: { canonical: 'volume' },
+	soundVolumeScale: { canonical: 'soundVolumeScale' },
 	downEffect: { canonical: 'downEffect' },
 	downEffectValue: { canonical: 'downEffectValue' },
 	title: { canonical: 'title' },
@@ -453,21 +389,14 @@ const LABEL_EXTENSION_ATTRS = {
 	titleColor: { canonical: 'titleColor' },
 	titleFontSize: { canonical: 'titleFontSize' },
 	prompt: { canonical: 'prompt' },
-	sound: { canonical: 'sound' },
-	soundVolumeScale: { canonical: 'volume' },
 } satisfies XmlAttrMap;
 
 const COMBOBOX_EXTENSION_ATTRS = {
 	dropdown: { canonical: 'dropdown' },
 	title: { canonical: 'title' },
 	icon: { canonical: 'icon' },
-	titleColor: { canonical: 'titleColor' },
-	popupDirection: { canonical: 'direction' },
-	sound: { canonical: 'sound' },
-	soundVolumeScale: { canonical: 'volume' },
 	visibleItemCount: { canonical: 'visibleItemCount' },
 	selectionController: { canonical: 'selectionController' },
-	autoClearItems: { canonical: 'autoClearItems' },
 } satisfies XmlAttrMap;
 
 const PROGRESSBAR_EXTENSION_ATTRS = {
@@ -476,8 +405,6 @@ const PROGRESSBAR_EXTENSION_ATTRS = {
 	value: { canonical: 'value' },
 	max: { canonical: 'max' },
 	min: { canonical: 'min' },
-	sound: { canonical: 'sound' },
-	soundVolumeScale: { canonical: 'volume' },
 } satisfies XmlAttrMap;
 
 const SLIDER_EXTENSION_ATTRS = {
@@ -499,18 +426,6 @@ const RELATION_ATTRS = {
 	sidePair: { canonical: 'sidePair' },
 } satisfies XmlAttrMap;
 
-const CUSTOM_PROPERTY_ATTRS = {
-	target: { canonical: 'target' },
-	propertyId: { canonical: 'propertyId' },
-	label: { canonical: 'label' },
-} satisfies XmlAttrMap;
-
-const PROPERTY_OVERRIDE_ATTRS = {
-	target: { canonical: 'target' },
-	propertyId: { canonical: 'propertyId' },
-	value: { canonical: 'value' },
-} satisfies XmlAttrMap;
-
 const GEAR_ATTRS = {
 	controller: { canonical: 'controller' },
 	pages: { canonical: 'pages' },
@@ -527,11 +442,6 @@ const CONTROLLER_ATTRS = {
 	name: { canonical: 'name' },
 	pages: { canonical: 'pages' },
 	selected: { canonical: 'selected' },
-	alias: { canonical: 'alias' },
-	autoRadioGroupDepth: { canonical: 'autoRadioGroupDepth' },
-	exported: { canonical: 'exported' },
-	homePageType: { canonical: 'homePageType' },
-	homePage: { canonical: 'homePage' },
 } satisfies XmlAttrMap;
 
 const CONTROLLER_ACTION_ATTRS = {
@@ -547,18 +457,13 @@ const CONTROLLER_ACTION_ATTRS = {
 	targetPage: { canonical: 'targetPage' },
 } satisfies XmlAttrMap;
 
-const CONTROLLER_REMARK_ATTRS = {
-	page: { canonical: 'page' },
-	value: { canonical: 'value' },
-} satisfies XmlAttrMap;
-
 const TRANSITION_ATTRS = {
 	name: { canonical: 'name' },
 	autoPlay: { canonical: 'autoPlay' },
 	autoPlayTimes: { canonical: 'autoPlayRepeat', aliases: ['autoPlayTimes'] },
 	autoPlayDelay: { canonical: 'autoPlayDelay' },
 	options: { canonical: 'options' },
-	fps: { canonical: 'frameRate' },
+	fps: { canonical: 'fps' },
 } satisfies XmlAttrMap;
 
 const TRANSITION_ITEM_ATTRS = {
@@ -571,7 +476,6 @@ const TRANSITION_ITEM_ATTRS = {
 	label: { canonical: 'label' },
 	label2: { canonical: 'label2' },
 	path: { canonical: 'path' },
-	customEase: { canonical: 'customEase' },
 	ease: { canonical: 'ease' },
 	type: { canonical: 'type' },
 	value: { canonical: 'value' },
@@ -607,31 +511,21 @@ const PACKAGE_PUBLISH_NODE = defineNode(
 	},
 );
 const PACKAGE_RESOURCE_NODE = defineNode(PACKAGE_RESOURCE_BASE_ATTRS);
-const PACKAGE_RESOURCE_FOLDER_NODE = defineNode(PACKAGE_RESOURCE_FOLDER_ATTRS);
 const PACKAGE_IMAGE_RESOURCE_NODE = defineNode(PACKAGE_IMAGE_RESOURCE_ATTRS);
 const PACKAGE_FONT_RESOURCE_NODE = defineNode(PACKAGE_FONT_RESOURCE_ATTRS);
-const PACKAGE_MOVIE_CLIP_RESOURCE_NODE = defineNode(PACKAGE_MOVIE_CLIP_RESOURCE_ATTRS);
 const PACKAGE_SKELETON_RESOURCE_NODE = defineNode(PACKAGE_SKELETON_RESOURCE_ATTRS);
-const DISPLAY_OBJECT_NODE = defineNode(mergeAttrs(
-	DISPLAY_OBJECT_IDENTITY_ATTRS,
-	PIVOT_ATTRS,
-	ANCHOR_ATTRS,
-));
+const PACKAGE_MOVIECLIP_RESOURCE_NODE = defineNode(PACKAGE_MOVIECLIP_RESOURCE_ATTRS);
+const DISPLAY_OBJECT_NODE = defineNode(DISPLAY_OBJECT_IDENTITY_ATTRS);
 const BUTTON_EXTENSION_NODE = defineNode(BUTTON_EXTENSION_ATTRS);
 const LABEL_EXTENSION_NODE = defineNode(LABEL_EXTENSION_ATTRS);
 const PROGRESSBAR_EXTENSION_NODE = defineNode(PROGRESSBAR_EXTENSION_ATTRS);
 const SLIDER_EXTENSION_NODE = defineNode(SLIDER_EXTENSION_ATTRS);
 const SCROLLBAR_EXTENSION_NODE = defineNode(SCROLLBAR_EXTENSION_ATTRS);
 const RELATION_NODE = defineNode(RELATION_ATTRS);
-const CUSTOM_PROPERTY_NODE = defineNode(CUSTOM_PROPERTY_ATTRS);
-const PROPERTY_OVERRIDE_NODE = defineNode(PROPERTY_OVERRIDE_ATTRS);
 const GEAR_NODE = defineNode(GEAR_ATTRS);
 const CONTROLLER_ACTION_NODE = defineNode(CONTROLLER_ACTION_ATTRS);
-const CONTROLLER_REMARK_NODE = defineNode(CONTROLLER_REMARK_ATTRS);
 const TRANSITION_ITEM_NODE = defineNode(TRANSITION_ITEM_ATTRS);
-const LIST_ITEM_NODE = defineNode(LIST_ITEM_ATTRS, {
-	property: PROPERTY_OVERRIDE_NODE,
-});
+const LIST_ITEM_NODE = defineNode(LIST_ITEM_ATTRS);
 const COMBOBOX_ITEM_NODE = defineNode(COMBOBOX_ITEM_ATTRS);
 
 const WITH_RELATION_CHILDREN = {
@@ -662,7 +556,6 @@ const WITH_GROUP_GEAR_CHILDREN = {
 
 const WITH_CONTROLLER_ACTION_CHILDREN = {
 	action: CONTROLLER_ACTION_NODE,
-	remark: CONTROLLER_REMARK_NODE,
 } satisfies XmlChildrenMap;
 
 const WITH_TRANSITION_ITEM_CHILDREN = {
@@ -710,7 +603,6 @@ const TRANSITION_NODE = defineNode(
 
 const IMAGE_NODE = defineNode(
 	mergeAttrs(
-		COMMON_DISPLAY_OBJECT_ATTRS,
 		IMAGE_PANEL_ATTRS,
 		XY_SIZE_ATTRS,
 		LOCKED_ATTRS,
@@ -718,9 +610,10 @@ const IMAGE_NODE = defineNode(
 		PIVOT_ATTRS,
 		ANCHOR_ATTRS,
 		SCALE_ATTRS,
-		SKEW_ATTRS,
 		GROUP_REF_ATTRS,
-		COMMON_DISPLAY_STATE_ATTRS,
+		ROTATION_ALPHA_ATTRS,
+		VISIBLE_ATTRS,
+		GRAYED_ATTRS,
 		RESOURCE_LINK_ATTRS,
 		FILTER_ATTRS,
 	),
@@ -729,15 +622,16 @@ const IMAGE_NODE = defineNode(
 
 const GRAPH_NODE = defineNode(
 	mergeAttrs(
-		COMMON_DISPLAY_OBJECT_ATTRS,
 		XY_SIZE_ATTRS,
 		LOCKED_ATTRS,
 		RESTRICT_SIZE_ATTRS,
 		PIVOT_ATTRS,
 		ANCHOR_ATTRS,
-		SKEW_ATTRS,
+		SCALE_ATTRS,
 		GROUP_REF_ATTRS,
-		COMMON_DISPLAY_STATE_ATTRS,
+		ROTATION_ALPHA_ATTRS,
+		VISIBLE_ATTRS,
+		TOUCHABLE_ATTRS,
 		GRAPH_PANEL_ATTRS,
 	),
 	mergeChildren(WITH_RELATION_CHILDREN, WITH_GEAR_CHILDREN),
@@ -745,13 +639,14 @@ const GRAPH_NODE = defineNode(
 
 const MOVIE_CLIP_NODE = defineNode(
 	mergeAttrs(
-		COMMON_DISPLAY_OBJECT_ATTRS,
 		MOVIE_CLIP_PANEL_ATTRS,
 		XY_SIZE_ATTRS,
 		PIVOT_ATTRS,
-		ANCHOR_ATTRS,
+		SCALE_ATTRS,
 		GROUP_REF_ATTRS,
-		COMMON_DISPLAY_STATE_ATTRS,
+		ROTATION_ALPHA_ATTRS,
+		VISIBLE_ATTRS,
+		GRAYED_ATTRS,
 		RESOURCE_LINK_ATTRS,
 		FILTER_ATTRS,
 	),
@@ -760,7 +655,6 @@ const MOVIE_CLIP_NODE = defineNode(
 
 const COMPONENT_INSTANCE_NODE = defineNode(
 	mergeAttrs(
-		COMMON_DISPLAY_OBJECT_ATTRS,
 		COMPONENT_INSTANCE_PANEL_ATTRS,
 		XY_SIZE_ATTRS,
 		LOCKED_ATTRS,
@@ -770,7 +664,10 @@ const COMPONENT_INSTANCE_NODE = defineNode(
 		ANCHOR_ATTRS,
 		SCALE_ATTRS,
 		GROUP_REF_ATTRS,
-		COMMON_DISPLAY_STATE_ATTRS,
+		ROTATION_ALPHA_ATTRS,
+		VISIBLE_ATTRS,
+		TOUCHABLE_ATTRS,
+		GRAYED_ATTRS,
 		INSTANCE_MISC_PANEL_ATTRS,
 		RESOURCE_LINK_ATTRS,
 		FILTER_ATTRS,
@@ -779,18 +676,17 @@ const COMPONENT_INSTANCE_NODE = defineNode(
 		WITH_RELATION_CHILDREN,
 		WITH_GEAR_CHILDREN,
 		WITH_INSTANCE_EXTENSION_CHILDREN,
-		{ property: PROPERTY_OVERRIDE_NODE },
 	),
 );
 
 const LOADER_NODE = defineNode(
 	mergeAttrs(
-		COMMON_DISPLAY_OBJECT_ATTRS,
 		XY_SIZE_ATTRS,
 		PIVOT_ATTRS,
 		ANCHOR_ATTRS,
 		SCALE_ATTRS,
-		COMMON_DISPLAY_STATE_ATTRS,
+		GROUP_REF_ATTRS,
+		GRAYED_ATTRS,
 		LOADER_PANEL_ATTRS,
 		FILTER_ATTRS,
 	),
@@ -798,68 +694,40 @@ const LOADER_NODE = defineNode(
 );
 
 const LOADER3D_NODE = defineNode(
-	mergeAttrs(COMMON_DISPLAY_OBJECT_ATTRS, LOADER3D_PANEL_ATTRS),
+	mergeAttrs(XY_SIZE_ATTRS, LOADER3D_PANEL_ATTRS),
 	mergeChildren(WITH_RELATION_CHILDREN, WITH_GEAR_CHILDREN),
 );
 
 const TEXT_NODE = defineNode(
 	mergeAttrs(
-		COMMON_DISPLAY_OBJECT_ATTRS,
 		XY_SIZE_ATTRS,
 		RESTRICT_SIZE_ATTRS,
-		PIVOT_ATTRS,
-		ANCHOR_ATTRS,
 		{ customData: { canonical: 'customData' } },
 		GROUP_REF_ATTRS,
-		COMMON_DISPLAY_STATE_ATTRS,
 		TEXT_PANEL_ATTRS,
 		TEXT_INPUT_PANEL_ATTRS,
+		SCALE_ATTRS,
 	),
 	mergeChildren(WITH_RELATION_CHILDREN, WITH_GEAR_CHILDREN),
 );
 
-const TEXT_INPUT_NODE = defineNode(
-	mergeAttrs(
-		COMMON_DISPLAY_OBJECT_ATTRS,
-		XY_SIZE_ATTRS,
-		RESTRICT_SIZE_ATTRS,
-		PIVOT_ATTRS,
-		ANCHOR_ATTRS,
-		{ customData: { canonical: 'customData' } },
-		GROUP_REF_ATTRS,
-		COMMON_DISPLAY_STATE_ATTRS,
-		TEXT_PANEL_ATTRS,
-		TEXT_INPUT_PANEL_ATTRS,
-	),
-	mergeChildren(WITH_RELATION_CHILDREN, WITH_GEAR_CHILDREN),
-);
+const TEXT_INPUT_NODE = defineNode(mergeAttrs(TEXT_INPUT_PANEL_ATTRS));
 
 const RICH_TEXT_NODE = defineNode(
-	mergeAttrs(
-		COMMON_DISPLAY_OBJECT_ATTRS,
-		XY_SIZE_ATTRS,
-		RESTRICT_SIZE_ATTRS,
-		PIVOT_ATTRS,
-		ANCHOR_ATTRS,
-		{ customData: { canonical: 'customData' } },
-		GROUP_REF_ATTRS,
-		COMMON_DISPLAY_STATE_ATTRS,
-		TEXT_PANEL_ATTRS,
-		RICH_TEXT_PANEL_ATTRS,
-	),
+	mergeAttrs(RICH_TEXT_PANEL_ATTRS, SCALE_ATTRS),
 	mergeChildren(WITH_RELATION_CHILDREN, WITH_GEAR_CHILDREN),
 );
 
 const GROUP_NODE = defineNode(
 	mergeAttrs(
-		COMMON_DISPLAY_OBJECT_ATTRS,
 		XY_SIZE_ATTRS,
 		LOCKED_ATTRS,
+		GROUP_REF_ATTRS,
+		VISIBLE_ATTRS,
+		GROUP_PANEL_ATTRS,
 		PIVOT_ATTRS,
 		ANCHOR_ATTRS,
-		GROUP_REF_ATTRS,
-		COMMON_DISPLAY_STATE_ATTRS,
-		GROUP_PANEL_ATTRS,
+		SCALE_ATTRS,
 	),
 	// FairyGUI editor only exposes relation/gear channels on advanced groups.
 	// Protocol metadata stays static, so we keep the child set narrow here and
@@ -869,13 +737,13 @@ const GROUP_NODE = defineNode(
 
 const LIST_NODE = defineNode(
 	mergeAttrs(
-		COMMON_DISPLAY_OBJECT_ATTRS,
 		XY_SIZE_ATTRS,
+		GROUP_REF_ATTRS,
+		TOUCHABLE_ATTRS,
+		LIST_PANEL_ATTRS,
 		PIVOT_ATTRS,
 		ANCHOR_ATTRS,
-		GROUP_REF_ATTRS,
-		COMMON_DISPLAY_STATE_ATTRS,
-		LIST_PANEL_ATTRS,
+		SCALE_ATTRS,
 	),
 	mergeChildren(
 		WITH_RELATION_CHILDREN,
@@ -910,7 +778,7 @@ const COMPONENT_ROOT_NODE = defineNode(
 		{
 			controller: CONTROLLER_NODE,
 			transition: TRANSITION_NODE,
-			customProperty: CUSTOM_PROPERTY_NODE,
+			relation: RELATION_NODE,
 		},
 		WITH_ROOT_EXTENSION_CHILDREN,
 	),
@@ -925,11 +793,10 @@ export const PROJECT_XML_PROTOCOL = {
 	packagePublish: PACKAGE_PUBLISH_NODE,
 	packagePublishAtlas: PACKAGE_PUBLISH_ATLAS_NODE,
 	packageResource: PACKAGE_RESOURCE_NODE,
-	packageResourceFolder: PACKAGE_RESOURCE_FOLDER_NODE,
 	packageImageResource: PACKAGE_IMAGE_RESOURCE_NODE,
 	packageFontResource: PACKAGE_FONT_RESOURCE_NODE,
-	packageMovieClipResource: PACKAGE_MOVIE_CLIP_RESOURCE_NODE,
 	packageSkeletonResource: PACKAGE_SKELETON_RESOURCE_NODE,
+		packageMovieClipResource: PACKAGE_MOVIECLIP_RESOURCE_NODE,
 	displayObject: DISPLAY_OBJECT_NODE,
 	image: IMAGE_NODE,
 	graph: GRAPH_NODE,
@@ -956,7 +823,6 @@ export const PROJECT_XML_PROTOCOL = {
 	group: GROUP_NODE,
 	list: LIST_NODE,
 	listItem: LIST_ITEM_NODE,
-	propertyOverride: PROPERTY_OVERRIDE_NODE,
 	comboBoxItem: COMBOBOX_ITEM_NODE,
 } satisfies Record<string, XmlNodeProtocol>;
 

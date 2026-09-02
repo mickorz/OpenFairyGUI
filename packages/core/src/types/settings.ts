@@ -10,7 +10,6 @@ export interface PublishSettings {
 	fileExtension?: string;
 	path?: string;
 	branchPath?: string;
-	includeHighResolution?: number;
 	branchProcessing?: number;
 	seperatedAtlasForBranch?: boolean;
 	packageCount?: number;
@@ -62,22 +61,20 @@ export interface AdaptationSettings {
 	devices?: unknown[];
 }
 
-export type JsonValue = string | number | boolean | null | JsonValue[] | { [key: string]: JsonValue };
-
-export type CustomPropertiesSettings = Record<string, JsonValue>;
+export interface I18nLangFile {
+	name: string;
+	path: string;
+	fontName?: string;
+}
 
 export interface I18nSettings {
-	langFiles: Array<{
-		name: string;
-		path: string;
-	}>;
+	langFiles: I18nLangFile[];
 }
 
 export interface ProjectSettings {
 	publish?: PublishSettings;
 	common?: CommonSettings;
 	adaptation?: AdaptationSettings;
-	customProperties?: CustomPropertiesSettings;
 	i18n?: I18nSettings;
 	[key: string]: unknown;
 }
