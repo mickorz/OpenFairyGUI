@@ -24,7 +24,8 @@
 		"test:debug": "ava debug --no-worker-threads",
 		"coverage": "c8 --reporter=lcov --reporter=text pnpm test -- --tap",
 		"lint": "biome lint packages",
-		"lint:ci": "biome lint packages"
+		"lint:ci": "biome lint packages",
+		"bundle": "esbuild packages/cli/src/cli.ts --bundle --platform=node --format=esm --external:sharp --outfile=fairygui-tools.mjs"
 	},
 	"devDependencies": {
 		"@biomejs/biome": "^2.4.9",
