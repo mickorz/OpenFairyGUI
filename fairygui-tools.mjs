@@ -22006,6 +22006,117 @@ function createTransform(name, fn) {
   return fn;
 }
 
+// packages/functions/src/validate.ts
+var VALIDATE_DEFAULTS = {
+  throwOnError: false
+};
+function validate2(_options = {}) {
+  const options = { ...VALIDATE_DEFAULTS, ..._options };
+  return createTransform("validate", (doc) => {
+    const issues = [];
+    const root = doc.getRoot();
+    if (!root.getProjectId()) {
+      issues.push({
+        severity: "warning" /* WARNING */,
+        message: "Project has no ID."
+      });
+    }
+    const globalResources = /* @__PURE__ */ new Map();
+    for (const pkg of root.listPackages()) {
+      if (!pkg.getId()) {
+        issues.push({
+          severity: "error" /* ERROR */,
+          message: `Package "${pkg.getName()}" has no ID.`,
+          packageName: pkg.getName()
+        });
+      }
+      const idSet = /* @__PURE__ */ new Set();
+      for (const res of pkg.listResources()) {
+        const resId = res.getId();
+        if (!resId) {
+          issues.push({
+            severity: "warning" /* WARNING */,
+            message: `Resource "${res.getName()}" has no ID.`,
+            packageName: pkg.getName(),
+            resourceName: res.getName()
+          });
+          continue;
+        }
+        if (idSet.has(resId)) {
+          issues.push({
+            severity: "error" /* ERROR */,
+            message: `Duplicate resource ID "${resId}" in package "${pkg.getName()}".`,
+            packageName: pkg.getName(),
+            resourceName: res.getName()
+          });
+        }
+        idSet.add(resId);
+        globalResources.set(`${pkg.getId()}${resId}`, `${pkg.getName()}/${res.getName()}`);
+      }
+      for (const comp of pkg.listComponents()) {
+        const children = comp.listChildren();
+        if (children.length === 0) {
+          issues.push({
+            severity: "info" /* INFO */,
+            message: `Component "${comp.getName()}" has no children.`,
+            packageName: pkg.getName(),
+            componentName: comp.getName()
+          });
+        }
+        for (const ctrl of comp.listControllers()) {
+          if (ctrl.listPages().length === 0) {
+            issues.push({
+              severity: "warning" /* WARNING */,
+              message: `Controller "${ctrl.getName()}" in "${comp.getName()}" has no pages.`,
+              packageName: pkg.getName(),
+              componentName: comp.getName()
+            });
+          }
+        }
+        for (const child of children) {
+          const src = child.getSrc?.();
+          if (!src) continue;
+          if (src.startsWith("ui://")) {
+            const idPart = src.slice(5);
+            if (idPart.length > 8) {
+              const pkgId = idPart.slice(0, 8);
+              const resId = idPart.slice(8);
+              const key = `${pkgId}${resId}`;
+              if (!globalResources.has(key)) {
+                issues.push({
+                  severity: "error" /* ERROR */,
+                  message: `Broken reference "${src}" in "${child.getName()}" (component "${comp.getName()}").`,
+                  packageName: pkg.getName(),
+                  componentName: comp.getName(),
+                  resourceName: child.getName()
+                });
+              }
+            }
+          }
+        }
+      }
+    }
+    const errors = issues.filter((i) => i.severity === "error" /* ERROR */);
+    const warnings = issues.filter((i) => i.severity === "warning" /* WARNING */);
+    const infos = issues.filter((i) => i.severity === "info" /* INFO */);
+    const result = {
+      ok: errors.length === 0,
+      errors,
+      warnings,
+      infos
+    };
+    root.setExtras({ ...root.getExtras(), _validation: result });
+    const logger = doc.getLogger();
+    if (errors.length) logger.warn(`validate: ${errors.length} error(s) found.`);
+    if (warnings.length) logger.warn(`validate: ${warnings.length} warning(s) found.`);
+    logger.info(`validate: ${issues.length} issue(s) total.`);
+    if (options.throwOnError && errors.length > 0) {
+      throw new Error(`Validation failed with ${errors.length} error(s):
+${errors.map((e) => `  - ${e.message}`).join("\n")}`);
+    }
+  });
+}
+
 // packages/functions/src/max-rects-compat.ts
 var NO_ROTATION = 2;
 var MAX_SCORE = 2147483647;
@@ -26157,6 +26268,7 @@ Commands:
   publish <project-dir> --output <dir> [options]  Publish project to binary outputs and configured generated code
   restore <release-dir> --output <dir> [options]  Restore a FairyGUI project from published binaries
   list-fonts <release-dir> [options]              List TTF fonts needed by published binaries
+  validate <project-dir> [options]                Validate project for common issues
 
 Publish options:
   --output, -o <dir>     Output directory (required)
@@ -26174,6 +26286,9 @@ Restore options:
   --project-type <name|id>  Override restored project type; default is unity
   --font-dir <dir>       Directory containing .ttf font files to copy into the restored project
   --lang-dir <dir>       Directory containing localization txt files to copy into the restored project
+
+Validate options:
+  --throw-on-error       Exit with error code when validation errors are found
 
 Options:
   --help, -h     Show this help
@@ -26225,6 +26340,9 @@ async function main() {
       break;
     case "list-fonts":
       await cmdListFonts(rest);
+      break;
+    case "validate":
+      await cmdValidate(rest);
       break;
     default:
       console.error(`Unknown command: ${command}
@@ -26398,6 +26516,58 @@ Packages: ${report.totals.packages}`);
   for (const pkg of report.packages) {
     const res = pkg.resources;
     console.log(`  ${pkg.name} (${pkg.id}): ${res.images.count} img, ${res.sounds.count} snd, ${res.fonts.count} font, ${res.components.count} comp`);
+  }
+}
+var SEVERITY_LABEL = {
+  ["error" /* ERROR */]: "ERROR",
+  ["warning" /* WARNING */]: "WARN",
+  ["info" /* INFO */]: "INFO"
+};
+function formatValidationIssue(issue) {
+  const location = [issue.packageName, issue.componentName, issue.resourceName].filter(Boolean).join(" / ");
+  return location ? `${issue.message}  (${location})` : issue.message;
+}
+function printValidationResult(result) {
+  console.log(`Validation: ${result.ok ? "OK" : "FAILED"}`);
+  console.log(`  Errors:   ${result.errors.length}`);
+  console.log(`  Warnings: ${result.warnings.length}`);
+  console.log(`  Infos:    ${result.infos.length}`);
+  for (const issue of result.errors) {
+    console.log(`  [${SEVERITY_LABEL[issue.severity]}] ${formatValidationIssue(issue)}`);
+  }
+  for (const issue of result.warnings) {
+    console.log(`  [${SEVERITY_LABEL[issue.severity]}] ${formatValidationIssue(issue)}`);
+  }
+  for (const issue of result.infos) {
+    console.log(`  [${SEVERITY_LABEL[issue.severity]}] ${formatValidationIssue(issue)}`);
+  }
+}
+async function cmdValidate(args) {
+  const { values, positionals } = parseArgs({
+    args,
+    options: {
+      "throw-on-error": { type: "boolean" }
+    },
+    allowPositionals: true
+  });
+  if (positionals.length === 0) {
+    console.error("Usage: ofgui validate <project-dir> [--throw-on-error]");
+    process.exit(1);
+  }
+  const fairyPath = await resolveFairyPath(positionals[0]);
+  console.log(`Project: ${fairyPath}
+`);
+  const io = new NodeIO();
+  const doc = await io.readProject(fairyPath);
+  await doc.transform(validate2({ throwOnError: values["throw-on-error"] }));
+  const result = doc.getRoot().getExtras()._validation;
+  if (!result) {
+    console.log("Validation: no result.");
+    return;
+  }
+  printValidationResult(result);
+  if (!result.ok) {
+    process.exit(1);
   }
 }
 function parseProjectType(value) {

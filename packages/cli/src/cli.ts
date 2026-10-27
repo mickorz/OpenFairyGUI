@@ -8,6 +8,7 @@ import {
 	resolvePublishOptions,
 	restore,
 	listMissingFonts,
+	validate,
 	type InspectReport,
 	type PublishOptions,
 	type RestoreFileSystem,
@@ -15,6 +16,9 @@ import {
 	type RestoreImageCropper,
 	type RestoreImageExtractInput,
 	type RestoreImageExtractor,
+	type ValidationResult,
+	type ValidationIssue,
+	ValidationSeverity,
 } from '@openfairygui/functions';
 import fs from 'node:fs/promises';
 import path from 'node:path';
@@ -31,6 +35,7 @@ Commands:
   publish <project-dir> --output <dir> [options]  Publish project to binary outputs and configured generated code
   restore <release-dir> --output <dir> [options]  Restore a FairyGUI project from published binaries
   list-fonts <release-dir> [options]              List TTF fonts needed by published binaries
+  validate <project-dir> [options]                Validate project for common issues
 
 Publish options:
   --output, -o <dir>     Output directory (required)
@@ -48,6 +53,9 @@ Restore options:
   --project-type <name|id>  Override restored project type; default is unity
   --font-dir <dir>       Directory containing .ttf font files to copy into the restored project
   --lang-dir <dir>       Directory containing localization txt files to copy into the restored project
+
+Validate options:
+  --throw-on-error       Exit with error code when validation errors are found
 
 Options:
   --help, -h     Show this help
@@ -110,6 +118,9 @@ async function main(): Promise<void> {
 			break;
 		case 'list-fonts':
 			await cmdListFonts(rest);
+			break;
+		case 'validate':
+			await cmdValidate(rest);
 			break;
 		default:
 			console.error(`Unknown command: ${command}\n`);
@@ -331,6 +342,70 @@ function printReport(report: InspectReport): void {
 	for (const pkg of report.packages) {
 		const res = pkg.resources;
 		console.log(`  ${pkg.name} (${pkg.id}): ${res.images.count} img, ${res.sounds.count} snd, ${res.fonts.count} font, ${res.components.count} comp`);
+	}
+}
+
+const SEVERITY_LABEL: Record<ValidationSeverity, string> = {
+	[ValidationSeverity.ERROR]: 'ERROR',
+	[ValidationSeverity.WARNING]: 'WARN',
+	[ValidationSeverity.INFO]: 'INFO',
+};
+
+function formatValidationIssue(issue: ValidationIssue): string {
+	const location = [issue.packageName, issue.componentName, issue.resourceName]
+		.filter(Boolean)
+		.join(' / ');
+	return location ? `${issue.message}  (${location})` : issue.message;
+}
+
+function printValidationResult(result: ValidationResult): void {
+	console.log(`Validation: ${result.ok ? 'OK' : 'FAILED'}`);
+	console.log(`  Errors:   ${result.errors.length}`);
+	console.log(`  Warnings: ${result.warnings.length}`);
+	console.log(`  Infos:    ${result.infos.length}`);
+
+	for (const issue of result.errors) {
+		console.log(`  [${SEVERITY_LABEL[issue.severity]}] ${formatValidationIssue(issue)}`);
+	}
+	for (const issue of result.warnings) {
+		console.log(`  [${SEVERITY_LABEL[issue.severity]}] ${formatValidationIssue(issue)}`);
+	}
+	for (const issue of result.infos) {
+		console.log(`  [${SEVERITY_LABEL[issue.severity]}] ${formatValidationIssue(issue)}`);
+	}
+}
+
+async function cmdValidate(args: string[]): Promise<void> {
+	const { values, positionals } = parseArgs({
+		args,
+		options: {
+			'throw-on-error': { type: 'boolean' },
+		},
+		allowPositionals: true,
+	});
+
+	if (positionals.length === 0) {
+		console.error('Usage: ofgui validate <project-dir> [--throw-on-error]');
+		process.exit(1);
+	}
+
+	const fairyPath = await resolveFairyPath(positionals[0]);
+	console.log(`Project: ${fairyPath}\n`);
+
+	const io = new NodeIO();
+	const doc = await io.readProject(fairyPath);
+	await doc.transform(validate({ throwOnError: values['throw-on-error'] }));
+
+	const result = (doc.getRoot().getExtras() as Record<string, unknown>)._validation as ValidationResult | undefined;
+	if (!result) {
+		console.log('Validation: no result.');
+		return;
+	}
+
+	printValidationResult(result);
+
+	if (!result.ok) {
+		process.exit(1);
 	}
 }
 
