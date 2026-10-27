@@ -1,0 +1,987 @@
+import type {
+	UamAssetResource,
+	UamComponentProperties,
+	UamControllerAction,
+	UamControllerModel,
+	UamDisplayNode,
+	UamGearBinding,
+	UamImageResourceProperties,
+	UamMovieClipResourceProperties,
+	UamProject,
+	UamValidationIssue,
+} from './model.js';
+import { normalizeResourceFolderPath, resourceFolderParentPath } from '../utils/resource-folder.js';
+import type { ProjectDiagnosticCode } from '../validation.js';
+import { hasExactKeys, isFiniteUamPoint, isUiResourceReference, describeValue } from './property-rules/values.js';
+import { isValidUamTextProperties, textPropertiesFromNode } from './property-rules/text.js';
+import { isValidUamImageProperties, isValidUamMovieClipProperties } from './property-rules/image.js';
+import {
+	isValidUamComponentInstanceProperties,
+	isValidUamComponentPropertyOverride,
+} from './property-rules/component-instance.js';
+
+export { isFiniteUamPoint } from './property-rules/values.js';
+export { isValidUamTextProperties } from './property-rules/text.js';
+export { isValidUamImageProperties, isValidUamMovieClipProperties } from './property-rules/image.js';
+export {
+	isValidUamComponentInstanceProperties,
+	isValidUamComponentPropertyOverride,
+} from './property-rules/component-instance.js';
+
+function pushIssue(
+	issues: UamValidationIssue[],
+	path: string,
+	message: string,
+	code: ProjectDiagnosticCode = 'invalid_uam',
+): void {
+	issues.push({ severity: 'error', code, path, message });
+}
+
+export function isValidUamXYGearValue(value: unknown, positionsInPercent: boolean): boolean {
+	if (!isFiniteUamPoint(value)) return false;
+	const { px, py } = value as { px?: unknown; py?: unknown };
+	if (!positionsInPercent && px === undefined && py === undefined) return true;
+	return typeof px === 'number' && Number.isFinite(px) && typeof py === 'number' && Number.isFinite(py);
+}
+
+function isFiniteUamSize(value: unknown): boolean {
+	if (typeof value !== 'object' || value === null) return false;
+	const size = value as { width?: unknown; height?: unknown };
+	return (
+		typeof size.width === 'number' &&
+		Number.isFinite(size.width) &&
+		typeof size.height === 'number' &&
+		Number.isFinite(size.height)
+	);
+}
+
+function isFiniteUamEdgeInsets(value: unknown): boolean {
+	if (typeof value !== 'object' || value === null) return false;
+	const insets = value as { top?: unknown; bottom?: unknown; left?: unknown; right?: unknown };
+	return [insets.top, insets.bottom, insets.left, insets.right].every(
+		(part) => typeof part === 'number' && Number.isFinite(part),
+	);
+}
+
+const IMAGE_RESOURCE_PROPERTY_KEYS = [
+	'textureSetMode',
+	'qualityOption',
+	'quality',
+	'smoothing',
+	'duplicatePadding',
+	'scaleOption',
+	'scale9Grid',
+	'tileGridIndice',
+] as const satisfies readonly (keyof UamImageResourceProperties)[];
+
+export function isValidUamImageResourceProperties(value: unknown): value is UamImageResourceProperties {
+	if (typeof value !== 'object' || value === null || !hasExactKeys(value, IMAGE_RESOURCE_PROPERTY_KEYS)) return false;
+	const properties = value as UamImageResourceProperties;
+	if (
+		typeof properties.textureSetMode !== 'string' ||
+		typeof properties.qualityOption !== 'string' ||
+		!Number.isInteger(properties.quality) ||
+		properties.quality < 0 ||
+		properties.quality > 100 ||
+		typeof properties.smoothing !== 'boolean' ||
+		typeof properties.duplicatePadding !== 'boolean' ||
+		![0, 1, 2].includes(properties.scaleOption) ||
+		!Number.isInteger(properties.tileGridIndice) ||
+		properties.tileGridIndice < 0 ||
+		properties.tileGridIndice > 31
+	) {
+		return false;
+	}
+	if (properties.scaleOption !== 1) return properties.scale9Grid === null;
+	if (
+		!Array.isArray(properties.scale9Grid) ||
+		properties.scale9Grid.length !== 4 ||
+		!properties.scale9Grid.every(Number.isInteger)
+	) {
+		return false;
+	}
+	const [x, y, width, height] = properties.scale9Grid;
+	return x >= 0 && y >= 0 && width > 0 && height > 0;
+}
+
+const MOVIE_CLIP_RESOURCE_PROPERTY_KEYS = [
+	'interval',
+	'repeatDelay',
+	'swing',
+	'smoothing',
+	'frames',
+] as const satisfies readonly (keyof UamMovieClipResourceProperties)[];
+
+const MOVIE_CLIP_FRAME_KEYS = [
+	'rectX',
+	'rectY',
+	'rectWidth',
+	'rectHeight',
+	'addDelay',
+	'spriteId',
+] as const satisfies readonly (keyof UamMovieClipResourceProperties['frames'][number])[];
+
+export function isValidUamMovieClipResourceProperties(value: unknown): value is UamMovieClipResourceProperties {
+	if (typeof value !== 'object' || value === null || !hasExactKeys(value, MOVIE_CLIP_RESOURCE_PROPERTY_KEYS))
+		return false;
+	const properties = value as UamMovieClipResourceProperties;
+	if (
+		!Number.isInteger(properties.interval) ||
+		properties.interval < 0 ||
+		!Number.isInteger(properties.repeatDelay) ||
+		properties.repeatDelay < 0 ||
+		typeof properties.swing !== 'boolean' ||
+		typeof properties.smoothing !== 'boolean' ||
+		!Array.isArray(properties.frames)
+	) {
+		return false;
+	}
+	return properties.frames.every(
+		(frame) =>
+			typeof frame === 'object' &&
+			frame !== null &&
+			hasExactKeys(frame, MOVIE_CLIP_FRAME_KEYS) &&
+			[frame.rectX, frame.rectY, frame.rectWidth, frame.rectHeight, frame.addDelay].every(Number.isInteger) &&
+			frame.rectWidth >= 0 &&
+			frame.rectHeight >= 0 &&
+			frame.addDelay >= 0 &&
+			typeof frame.spriteId === 'string',
+	);
+}
+
+const COMPONENT_PROPERTY_KEYS = [
+	'minSize',
+	'maxSize',
+	'pivot',
+	'pivotAsAnchor',
+	'overflow',
+	'margin',
+	'clipSoftness',
+	'hitTest',
+	'mask',
+	'reversedMask',
+	'scrollType',
+	'scrollBarDisplay',
+	'scrollBarFlags',
+	'scrollBarMargin',
+	'vtScrollBarRes',
+	'hzScrollBarRes',
+	'headerRes',
+	'footerRes',
+	'bgColor',
+	'bgColorEnabled',
+	'designImageAlpha',
+	'designImageLayer',
+	'designImageOffset',
+	'designImage',
+	'designImageForTest',
+	'pageController',
+	'showSound',
+	'hideSound',
+	'idNum',
+	'initName',
+	'remark',
+	'customExtensionId',
+	'extensionType',
+	'opaque',
+	'buttonMode',
+	'sound',
+	'soundVolumeScale',
+	'downEffect',
+	'downEffectValue',
+	'dropdown',
+	'promptText',
+	'selectionController',
+	'titleType',
+	'reverse',
+	'wholeNumbers',
+	'changeOnClick',
+	'fixedGripSize',
+	'autoClearItems',
+	'customProperties',
+] as const satisfies readonly (keyof UamComponentProperties)[];
+
+export function isValidUamComponentProperties(value: unknown): value is UamComponentProperties {
+	if (typeof value !== 'object' || value === null || !hasExactKeys(value, COMPONENT_PROPERTY_KEYS)) return false;
+	const properties = value as UamComponentProperties;
+	const strings = [
+		properties.hitTest,
+		properties.mask,
+		properties.vtScrollBarRes,
+		properties.hzScrollBarRes,
+		properties.headerRes,
+		properties.footerRes,
+		properties.bgColor,
+		properties.initName,
+		properties.remark,
+		properties.customExtensionId,
+		properties.pageController,
+		properties.extensionType,
+		properties.sound,
+		properties.dropdown,
+		properties.promptText,
+		properties.selectionController,
+	];
+	const booleans = [
+		properties.pivotAsAnchor,
+		properties.reversedMask,
+		properties.bgColorEnabled,
+		properties.designImageForTest,
+		properties.opaque,
+		properties.reverse,
+		properties.wholeNumbers,
+		properties.changeOnClick,
+		properties.fixedGripSize,
+		properties.autoClearItems,
+	];
+	const numbers = [
+		properties.overflow,
+		properties.scrollType,
+		properties.scrollBarDisplay,
+		properties.scrollBarFlags,
+		properties.idNum,
+		properties.buttonMode,
+		properties.soundVolumeScale,
+		properties.downEffect,
+		properties.downEffectValue,
+		properties.titleType,
+	];
+	return (
+		isFiniteUamSize(properties.minSize) &&
+		isFiniteUamSize(properties.maxSize) &&
+		isFiniteUamPoint(properties.pivot) &&
+		isFiniteUamEdgeInsets(properties.margin) &&
+		isFiniteUamPoint(properties.clipSoftness) &&
+		isFiniteUamEdgeInsets(properties.scrollBarMargin) &&
+		isFiniteUamPoint(properties.designImageOffset) &&
+		strings.every((item) => typeof item === 'string') &&
+		booleans.every((item) => typeof item === 'boolean') &&
+		numbers.every((item) => typeof item === 'number' && Number.isFinite(item)) &&
+		isUiResourceReference(properties.designImage) &&
+		isSoundReference(properties.showSound) &&
+		isSoundReference(properties.hideSound) &&
+		Number.isInteger(properties.designImageAlpha) &&
+		properties.designImageAlpha >= 0 &&
+		properties.designImageAlpha <= 100 &&
+		Number.isInteger(properties.designImageLayer) &&
+		properties.designImageLayer >= 0 &&
+		properties.designImageLayer <= 1 &&
+		Array.isArray(properties.customProperties) &&
+		properties.customProperties.every(
+			(property) =>
+				property &&
+				typeof property === 'object' &&
+				hasExactKeys(property, ['target', 'propertyId', 'label']) &&
+				typeof property.target === 'string' &&
+				(property.propertyId === 0 || property.propertyId === 1) &&
+				typeof property.label === 'string',
+		)
+	);
+}
+
+const isSoundReference = isUiResourceReference;
+
+function validateControllerAction(
+	action: UamControllerAction,
+	knownPageIds: Set<string>,
+	knownChildIds: Set<string>,
+	path: string,
+	issues: UamValidationIssue[],
+): void {
+	for (const pageId of action.fromPageIds) {
+		if (!knownPageIds.has(pageId)) {
+			pushIssue(issues, `${path}.fromPageIds`, `Unknown controller page id "${describeValue(pageId)}".`);
+		}
+	}
+	for (const pageId of action.toPageIds) {
+		if (!knownPageIds.has(pageId)) {
+			pushIssue(issues, `${path}.toPageIds`, `Unknown controller page id "${describeValue(pageId)}".`);
+		}
+	}
+	if (action.targetNodeId && !knownChildIds.has(action.targetNodeId)) {
+		pushIssue(issues, `${path}.targetNodeId`, `Unknown target node id "${describeValue(action.targetNodeId)}".`);
+	}
+}
+
+function validateGearBinding(
+	gear: UamGearBinding,
+	controllerMap: Map<string, UamControllerModel>,
+	path: string,
+	issues: UamValidationIssue[],
+): void {
+	if (gear.kind === 'xy') {
+		for (const [valuePath, value] of [
+			[`${path}.defaultValue`, gear.defaultValue],
+			...gear.states
+				.filter((state) => state.value !== null)
+				.map((state) => [`${path}.states.${describeValue(state.pageId)}.value`, state.value] as const),
+		] as const) {
+			if (value !== null && !isValidUamXYGearValue(value, gear.positionsInPercent)) {
+				pushIssue(
+					issues,
+					valuePath,
+					'XY gear values require finite x/y and paired finite px/py; percentage mode requires px/py.',
+				);
+			}
+		}
+	}
+	const controller = controllerMap.get(gear.controllerName);
+	if (!controller) {
+		pushIssue(issues, `${path}.controllerName`, `Unknown gear controller "${describeValue(gear.controllerName)}".`);
+		return;
+	}
+
+	const pageIds = new Set(controller.pages.map((page) => page.id));
+	if (gear.kind === 'display' || gear.kind === 'display2') {
+		const seen = new Set<string>();
+		for (const pageId of gear.visibleOnPageIds) {
+			if (seen.has(pageId))
+				pushIssue(issues, `${path}.visibleOnPageIds`, `Duplicate gear page id "${describeValue(pageId)}".`);
+			seen.add(pageId);
+		}
+		return;
+	}
+
+	const seen = new Set<string>();
+	for (const state of gear.states) {
+		if (!pageIds.has(state.pageId))
+			pushIssue(issues, `${path}.states`, `Unknown gear state page id "${describeValue(state.pageId)}".`);
+		if (seen.has(state.pageId))
+			pushIssue(issues, `${path}.states`, `Duplicate gear state page id "${describeValue(state.pageId)}".`);
+		seen.add(state.pageId);
+	}
+}
+
+function isSafePathSegment(value: string): boolean {
+	return (
+		value.length > 0 &&
+		value.trim() === value &&
+		value !== '.' &&
+		value !== '..' &&
+		!/[\\/:]/.test(value) &&
+		!/[. ]$/.test(value) &&
+		!/^(?:con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\..*)?$/i.test(value)
+	);
+}
+
+function normalizedResourceTarget(path: string, fileName: string): string | null {
+	if (!isSafePathSegment(fileName)) return null;
+	const segments = path.replace(/\\/g, '/').split('/').filter(Boolean);
+	if (segments.some((segment) => !isSafePathSegment(segment))) return null;
+	return [...segments, fileName].join('/');
+}
+
+function isSafeRelativePath(value: string): boolean {
+	const segments = value.replace(/\\/g, '/').split('/').filter(Boolean);
+	return segments.length > 0 && segments.every(isSafePathSegment);
+}
+
+function assetFileName(resource: UamAssetResource): string {
+	return resource.fileName || ('file' in resource ? resource.file : '') || resource.name;
+}
+
+function validatePackageOutputTargets(
+	pkg: UamProject['packages'][number],
+	pkgPath: string,
+	issues: UamValidationIssue[],
+): void {
+	if (!isSafePathSegment(pkg.name)) {
+		pushIssue(
+			issues,
+			`${pkgPath}.name`,
+			`Invalid package output name "${describeValue(pkg.name)}".`,
+			'unsafe_path',
+		);
+	}
+	const outputs = new Map<string, string>();
+	const folderKeys = new Set<string>();
+	for (const [folderIndex, folder] of pkg.folders.entries()) {
+		const folderPath = `${pkgPath}.folders[${folderIndex}]`;
+		if (folder.branch && !isSafePathSegment(folder.branch)) {
+			pushIssue(issues, `${folderPath}.branch`, `Invalid package branch name "${describeValue(folder.branch)}".`);
+		}
+		const normalizedPath = normalizeResourceFolderPath(folder.path);
+		if (
+			folder.path === '/' ||
+			folder.path !== normalizedPath ||
+			!folder.path.split('/').filter(Boolean).every(isSafePathSegment)
+		) {
+			pushIssue(
+				issues,
+				`${folderPath}.path`,
+				'Resource folder path must be canonical, non-root, and traversal-free.',
+				'unsafe_path',
+			);
+			continue;
+		}
+		if (typeof folder.favorite !== 'boolean') {
+			pushIssue(issues, `${folderPath}.favorite`, 'Resource folder favorite must be boolean.');
+		}
+		if (typeof folder.atlas !== 'string') {
+			pushIssue(issues, `${folderPath}.atlas`, 'Resource folder atlas must be a string.');
+		}
+		const key = `${describeValue(folder.branch)}\0${describeValue(folder.path)}`.toLowerCase();
+		if (folderKeys.has(key)) {
+			pushIssue(
+				issues,
+				`${folderPath}.path`,
+				`Duplicate resource folder path "${describeValue(folder.path)}".`,
+				'path_collision',
+			);
+		}
+		folderKeys.add(key);
+		const parentPath = resourceFolderParentPath(folder.path);
+		if (
+			parentPath !== '/' &&
+			!folderKeys.has(`${describeValue(folder.branch)}\0${parentPath}`.toLowerCase()) &&
+			!pkg.folders.some(
+				(candidate) =>
+					candidate.branch.toLowerCase() === folder.branch.toLowerCase() &&
+					candidate.path.toLowerCase() === parentPath.toLowerCase(),
+			)
+		) {
+			pushIssue(
+				issues,
+				`${folderPath}.path`,
+				`Parent resource folder "${describeValue(parentPath)}" does not exist.`,
+			);
+		}
+		const target = folder.path.replace(/^\/+|\/+$/g, '');
+		const descriptor = folder.branch ? 'package_branch.xml' : 'package.xml';
+		if (target.toLowerCase() === descriptor) {
+			pushIssue(
+				issues,
+				`${folderPath}.path`,
+				`Resource folder output "${describeValue(target)}" conflicts with the package descriptor.`,
+				'path_collision',
+			);
+		}
+		outputs.set(`${describeValue(folder.branch)}\0${target}`.toLowerCase(), folderPath);
+	}
+	for (const [resourceIndex, resource] of pkg.resources.entries()) {
+		const resourcePath = `${pkgPath}.resources[${resourceIndex}]`;
+		if (resource.branch && !isSafePathSegment(resource.branch)) {
+			pushIssue(
+				issues,
+				`${resourcePath}.branch`,
+				`Invalid package branch name "${describeValue(resource.branch)}".`,
+			);
+		}
+		const fileName =
+			resource.kind === 'component' ? `${describeValue(resource.name)}.xml` : assetFileName(resource);
+		const target = normalizedResourceTarget(resource.path, fileName);
+		if (!target) {
+			pushIssue(
+				issues,
+				`${resourcePath}.path`,
+				'Resource output path must be package-relative and traversal-free.',
+				'unsafe_path',
+			);
+			continue;
+		}
+		const descriptor = resource.branch ? 'package_branch.xml' : 'package.xml';
+		if (target.toLowerCase() === descriptor) {
+			pushIssue(
+				issues,
+				`${resourcePath}.path`,
+				`Resource output "${describeValue(target)}" conflicts with the package descriptor.`,
+				'path_collision',
+			);
+		}
+		const key = `${describeValue(resource.branch)}\0${target}`.toLowerCase();
+		const previous = outputs.get(key);
+		if (previous) {
+			pushIssue(
+				issues,
+				`${resourcePath}.path`,
+				`Resource output "${describeValue(target)}" conflicts with ${previous}.`,
+				'path_collision',
+			);
+		} else {
+			outputs.set(key, resourcePath);
+		}
+		if (resource.kind !== 'component' && resource.sourcePath && !isSafeRelativePath(resource.sourcePath)) {
+			pushIssue(
+				issues,
+				`${resourcePath}.sourcePath`,
+				'Resource sourcePath must be package-relative and traversal-free.',
+				'unsafe_path',
+			);
+		}
+	}
+}
+
+function validateDisplayNode(
+	node: UamDisplayNode,
+	controllerMap: Map<string, UamControllerModel>,
+	knownChildIds: Set<string>,
+	knownGroupIds: Set<string>,
+	path: string,
+	issues: UamValidationIssue[],
+): void {
+	if (!isFiniteUamPoint(node.position))
+		pushIssue(issues, `${path}.position`, 'Display node position must contain finite x and y numbers.');
+	if (!isFiniteUamSize(node.size) || node.size.width < 0 || node.size.height < 0) {
+		pushIssue(
+			issues,
+			`${path}.size`,
+			'Display node size must contain finite non-negative width and height values.',
+		);
+	}
+	if (typeof node.locked !== 'boolean') pushIssue(issues, `${path}.locked`, 'Display node locked must be boolean.');
+	if (typeof node.aspect !== 'boolean') pushIssue(issues, `${path}.aspect`, 'Display node aspect must be boolean.');
+	for (const [key, value] of [
+		['minSize', node.minSize],
+		['maxSize', node.maxSize],
+	] as const) {
+		if (!isFiniteUamSize(value) || value.width < 0 || value.height < 0) {
+			pushIssue(
+				issues,
+				`${path}.${key}`,
+				`Display node ${key} must contain finite non-negative width and height values.`,
+			);
+		}
+	}
+	if (isFiniteUamSize(node.minSize) && isFiniteUamSize(node.maxSize)) {
+		if (node.maxSize.width > 0 && node.maxSize.width < node.minSize.width) {
+			pushIssue(
+				issues,
+				`${path}.maxSize.width`,
+				'Display node maxSize.width must be zero or at least minSize.width.',
+			);
+		}
+		if (node.maxSize.height > 0 && node.maxSize.height < node.minSize.height) {
+			pushIssue(
+				issues,
+				`${path}.maxSize.height`,
+				'Display node maxSize.height must be zero or at least minSize.height.',
+			);
+		}
+	}
+	if (!isFiniteUamPoint(node.scale))
+		pushIssue(issues, `${path}.scale`, 'Display node scale must contain finite x and y numbers.');
+	if (!isFiniteUamPoint(node.skew))
+		pushIssue(issues, `${path}.skew`, 'Display node skew must contain finite x and y numbers.');
+	if (![node.visible, node.touchable, node.grayed].every((value) => typeof value === 'boolean')) {
+		pushIssue(issues, path, 'Display node visible, touchable, and grayed must be boolean.');
+	}
+	if (typeof node.alpha !== 'number' || !Number.isFinite(node.alpha) || node.alpha < 0 || node.alpha > 1) {
+		pushIssue(issues, `${path}.alpha`, 'Display node alpha must be a finite number between 0 and 1.');
+	}
+	if (typeof node.rotation !== 'number' || !Number.isFinite(node.rotation)) {
+		pushIssue(issues, `${path}.rotation`, 'Display node rotation must be finite.');
+	}
+	if (![node.tooltips, node.filter, node.filterData, node.customData].every((value) => typeof value === 'string')) {
+		pushIssue(issues, path, 'Display node tooltips, filter, filterData, and customData must be strings.');
+	}
+	if (!['normal', 'none', 'add', 'multiply', 'screen', 'erase'].includes(node.blendMode)) {
+		pushIssue(
+			issues,
+			`${path}.blendMode`,
+			`Unsupported display node blendMode "${describeValue(node.blendMode)}".`,
+		);
+	}
+	if (node.filter !== '' && node.filter !== 'color') {
+		pushIssue(issues, `${path}.filter`, `Unsupported display node filter "${describeValue(node.filter)}".`);
+	} else if (node.filter === 'color') {
+		const values = node.filterData.split(',').map((part) => Number(part.trim()));
+		if (values.length !== 4 || values.some((value) => !Number.isFinite(value))) {
+			pushIssue(
+				issues,
+				`${path}.filterData`,
+				'Color filterData must contain four finite comma-separated numbers.',
+			);
+		}
+	} else if (node.filterData !== '') {
+		pushIssue(issues, `${path}.filterData`, 'filterData must be empty when filter is empty.');
+	}
+	if (node.pivot !== undefined) {
+		if (!isFiniteUamPoint(node.pivot)) {
+			pushIssue(issues, `${path}.pivot`, 'Display node pivot must contain finite x and y numbers.');
+		}
+	}
+	if (node.pivotAsAnchor !== undefined) {
+		if (typeof node.pivotAsAnchor !== 'boolean') {
+			pushIssue(issues, `${path}.pivotAsAnchor`, 'Display node pivotAsAnchor must be boolean.');
+		}
+	}
+	if (node.kind === 'component' && node.fileName !== undefined && typeof node.fileName !== 'string') {
+		pushIssue(issues, `${path}.fileName`, 'Component file name hint must be a string.');
+	}
+	if (
+		(node.kind === 'component' ||
+			node.kind === 'button' ||
+			node.kind === 'label' ||
+			node.kind === 'comboBox' ||
+			node.kind === 'progressBar' ||
+			node.kind === 'slider' ||
+			node.kind === 'scrollBar') &&
+		node.pageController !== undefined
+	) {
+		if (typeof node.pageController !== 'string') {
+			pushIssue(issues, `${path}.pageController`, 'Component page controller must be a string.');
+		} else if (node.pageController && !controllerMap.has(node.pageController)) {
+			pushIssue(
+				issues,
+				`${path}.pageController`,
+				`Unknown page controller "${describeValue(node.pageController)}".`,
+			);
+		}
+	}
+	if (
+		node.kind === 'component' &&
+		node.controllerOverrides !== undefined &&
+		typeof node.controllerOverrides !== 'string'
+	) {
+		pushIssue(
+			issues,
+			`${path}.controllerOverrides`,
+			'Component controller overrides must be a string of controller name/page ID pairs.',
+		);
+	}
+	if (
+		node.kind === 'component' &&
+		node.propertyOverrides !== undefined &&
+		(!Array.isArray(node.propertyOverrides) || !node.propertyOverrides.every(isValidUamComponentPropertyOverride))
+	) {
+		pushIssue(
+			issues,
+			`${path}.propertyOverrides`,
+			'Component property overrides must contain a non-empty target, a non-negative integer propertyId, and a string value.',
+		);
+	}
+	if (node.kind === 'list' || node.kind === 'tree') {
+		if (!Number.isInteger(node.scrollBarDisplay) || node.scrollBarDisplay < 0 || node.scrollBarDisplay > 3) {
+			pushIssue(issues, `${path}.scrollBarDisplay`, 'List scrollBarDisplay must be an integer between 0 and 3.');
+		}
+		for (const [itemIndex, item] of node.listItems.entries()) {
+			if (
+				item.propertyOverrides !== undefined &&
+				(!Array.isArray(item.propertyOverrides) ||
+					!item.propertyOverrides.every(isValidUamComponentPropertyOverride))
+			) {
+				pushIssue(
+					issues,
+					`${path}.listItems[${itemIndex}].propertyOverrides`,
+					'List item property overrides must contain a non-empty target, a non-negative integer propertyId, and a string value.',
+				);
+			}
+		}
+	}
+	if (
+		(node.kind === 'text' || node.kind === 'richText' || node.kind === 'textInput') &&
+		!isValidUamTextProperties(textPropertiesFromNode(node), node.kind)
+	) {
+		pushIssue(issues, path, 'Text properties must be a complete valid snapshot matching the display node kind.');
+	}
+	if (
+		node.kind === 'image' &&
+		!isValidUamImageProperties({
+			color: node.color,
+			flip: node.flip,
+			fillMethod: node.fillMethod,
+			fillOrigin: node.fillOrigin,
+			fillClockwise: node.fillClockwise,
+			fillAmount: node.fillAmount,
+		})
+	) {
+		pushIssue(issues, path, 'Image properties must be a complete valid property snapshot.');
+	}
+	if (
+		node.kind === 'movieClip' &&
+		!isValidUamMovieClipProperties({
+			playing: node.playing,
+			frame: node.frame,
+			color: node.color,
+		})
+	) {
+		pushIssue(issues, path, 'MovieClip properties must be a complete valid property snapshot.');
+	}
+	if (node.kind === 'loader' || node.kind === 'loader3D') {
+		if ('group' in node) {
+			pushIssue(
+				issues,
+				`${path}.group`,
+				`${describeValue(node.kind)} display nodes must not declare a group reference.`,
+			);
+		}
+	} else {
+		if (!('group' in node) || typeof node.group !== 'string') {
+			pushIssue(issues, `${path}.group`, 'Display node group must be a string.');
+		} else if (node.group && (node.group === node.id || !knownGroupIds.has(node.group))) {
+			pushIssue(
+				issues,
+				`${path}.group`,
+				`Group reference "${describeValue(node.group)}" must target another group in the same component.`,
+			);
+		}
+	}
+	const gearKinds = new Set<UamGearBinding['kind']>();
+	for (const [gearIndex, gear] of node.gears.entries()) {
+		if (gearKinds.has(gear.kind)) {
+			pushIssue(
+				issues,
+				`${path}.gears[${gearIndex}]`,
+				`A display node may only have one ${describeValue(gear.kind)} gear.`,
+			);
+		}
+		gearKinds.add(gear.kind);
+		validateGearBinding(gear, controllerMap, `${path}.gears[${gearIndex}]`, issues);
+	}
+	for (const [relationIndex, relation] of node.relations.entries()) {
+		if (relation.targetNodeId && !knownChildIds.has(relation.targetNodeId)) {
+			pushIssue(
+				issues,
+				`${path}.relations[${relationIndex}]`,
+				`Unknown relation target node id "${describeValue(relation.targetNodeId)}".`,
+			);
+		}
+	}
+}
+
+export function validateUamProject(project: UamProject): UamValidationIssue[] {
+	const issues: UamValidationIssue[] = [];
+	const packageIds = new Set<string>();
+	const packageNames = new Set<string>();
+	const declaredProjectBranches = Array.isArray(project.branches) ? project.branches : [];
+	if (!Array.isArray(project.branches)) pushIssue(issues, 'branches', 'Project branches must be an array.');
+	const projectBranchNames = new Set<string>();
+	for (const [branchIndex, branchName] of declaredProjectBranches.entries()) {
+		if (!isSafePathSegment(branchName))
+			pushIssue(issues, `branches[${branchIndex}]`, `Invalid branch name "${describeValue(branchName)}".`);
+		if (projectBranchNames.has(branchName))
+			pushIssue(issues, `branches[${branchIndex}]`, `Duplicate branch name "${describeValue(branchName)}".`);
+		if (branchIndex > 0 && declaredProjectBranches[branchIndex - 1]!.localeCompare(branchName) > 0) {
+			pushIssue(issues, `branches[${branchIndex}]`, 'Project branches must use canonical lexical order.');
+		}
+		projectBranchNames.add(branchName);
+	}
+
+	for (const [pkgIndex, pkg] of project.packages.entries()) {
+		const pkgPath = `packages[${pkgIndex}]`;
+		if (packageIds.has(pkg.id))
+			pushIssue(
+				issues,
+				`${pkgPath}.id`,
+				`Duplicate package id "${describeValue(pkg.id)}".`,
+				'duplicate_package_id',
+			);
+		if (packageNames.has(pkg.name.toLowerCase()))
+			pushIssue(
+				issues,
+				`${pkgPath}.name`,
+				`Duplicate package name "${describeValue(pkg.name)}".`,
+				'duplicate_package_name',
+			);
+		packageIds.add(pkg.id);
+		packageNames.add(pkg.name.toLowerCase());
+		validatePackageOutputTargets(pkg, pkgPath, issues);
+		const declaredBranchNames = Array.isArray(pkg.branchNames) ? pkg.branchNames : [];
+		if (!Array.isArray(pkg.branchNames)) {
+			pushIssue(issues, `${pkgPath}.branchNames`, 'Package branchNames must be an array.');
+		}
+		const packageBranchNames = new Set<string>();
+		for (const [branchIndex, branchName] of declaredBranchNames.entries()) {
+			if (!branchName || !projectBranchNames.has(branchName)) {
+				pushIssue(
+					issues,
+					`${pkgPath}.branchNames[${branchIndex}]`,
+					`Unknown package branch "${describeValue(branchName)}".`,
+				);
+			}
+			if (packageBranchNames.has(branchName)) {
+				pushIssue(
+					issues,
+					`${pkgPath}.branchNames[${branchIndex}]`,
+					`Duplicate package branch "${describeValue(branchName)}".`,
+				);
+			}
+			packageBranchNames.add(branchName);
+		}
+
+		const resourceIds = new Set<string>();
+		for (const [resourceIndex, resource] of pkg.resources.entries()) {
+			const resourcePath = `${pkgPath}.resources[${resourceIndex}]`;
+			if (resourceIds.has(resource.id))
+				pushIssue(
+					issues,
+					`${resourcePath}.id`,
+					`Duplicate resource id "${describeValue(resource.id)}".`,
+					'duplicate_resource_id',
+				);
+			resourceIds.add(resource.id);
+			if (resource.branch && !packageBranchNames.has(resource.branch)) {
+				pushIssue(
+					issues,
+					`${resourcePath}.branch`,
+					`Unknown package branch "${describeValue(resource.branch)}".`,
+				);
+			}
+			if (resource.branchItemIds.length > declaredBranchNames.length) {
+				pushIssue(issues, `${resourcePath}.branchItemIds`, 'Branch item ids exceed the package branch table.');
+			}
+			if (typeof resource.favorite !== 'boolean') {
+				pushIssue(issues, `${resourcePath}.favorite`, 'Resource favorite must be boolean.');
+			}
+			if (resource.kind === 'image' && !isValidUamImageResourceProperties(resource.image)) {
+				pushIssue(
+					issues,
+					`${resourcePath}.image`,
+					'Image resource properties must be a complete valid property snapshot.',
+				);
+			}
+			if (resource.kind === 'movieClip') {
+				if (
+					!isFiniteUamSize(resource.dimensions) ||
+					resource.dimensions.width < 0 ||
+					resource.dimensions.height < 0
+				) {
+					pushIssue(
+						issues,
+						`${resourcePath}.dimensions`,
+						'MovieClip dimensions must contain finite non-negative width and height values.',
+					);
+				}
+				if (!isValidUamMovieClipResourceProperties(resource.movieClip)) {
+					pushIssue(
+						issues,
+						`${resourcePath}.movieClip`,
+						'MovieClip properties must be a complete valid property snapshot.',
+					);
+				}
+			}
+
+			if (resource.kind !== 'component') continue;
+
+			const component = resource.component;
+			if (!isValidUamComponentProperties(component.properties)) {
+				pushIssue(
+					issues,
+					`${resourcePath}.component.properties`,
+					'Component properties must be a complete valid property snapshot.',
+				);
+			}
+			const childIds = new Set<string>();
+			const groupIds = new Set<string>();
+			for (const [childIndex, child] of component.displayList.entries()) {
+				const childPath = `${resourcePath}.component.displayList[${childIndex}]`;
+				if (childIds.has(child.id))
+					pushIssue(issues, `${childPath}.id`, `Duplicate child id "${describeValue(child.id)}".`);
+				childIds.add(child.id);
+				if (child.kind === 'group') groupIds.add(child.id);
+			}
+
+			const controllerMap = new Map<string, UamControllerModel>();
+			for (const [controllerIndex, controller] of component.controllers.entries()) {
+				const controllerPath = `${resourcePath}.component.controllers[${controllerIndex}]`;
+				if (controllerMap.has(controller.name))
+					pushIssue(
+						issues,
+						`${controllerPath}.name`,
+						`Duplicate controller name "${describeValue(controller.name)}".`,
+					);
+				controllerMap.set(controller.name, controller);
+
+				const pageIds = new Set<string>();
+				for (const [pageIndex, page] of controller.pages.entries()) {
+					const pagePath = `${controllerPath}.pages[${pageIndex}]`;
+					if (pageIds.has(page.id))
+						pushIssue(
+							issues,
+							`${pagePath}.id`,
+							`Duplicate controller page id "${describeValue(page.id)}".`,
+						);
+					pageIds.add(page.id);
+				}
+				if (typeof controller.autoRadioGroupDepth !== 'boolean') {
+					pushIssue(
+						issues,
+						`${controllerPath}.autoRadioGroupDepth`,
+						'Controller autoRadioGroupDepth must be boolean.',
+					);
+				}
+				if (typeof controller.alias !== 'string')
+					pushIssue(issues, `${controllerPath}.alias`, 'Controller alias must be a string.');
+				if (typeof controller.exported !== 'boolean')
+					pushIssue(issues, `${controllerPath}.exported`, 'Controller exported must be boolean.');
+				if (!['default', 'specific', 'branch', 'variable'].includes(controller.homePageType)) {
+					pushIssue(
+						issues,
+						`${controllerPath}.homePageType`,
+						`Unknown controller home page type "${describeValue(controller.homePageType)}".`,
+					);
+				} else if (typeof controller.homePage !== 'string') {
+					pushIssue(issues, `${controllerPath}.homePage`, 'Controller homePage must be a string.');
+				} else if (controller.homePageType === 'specific' && !pageIds.has(controller.homePage)) {
+					pushIssue(
+						issues,
+						`${controllerPath}.homePage`,
+						`Unknown controller home page id "${describeValue(controller.homePage)}".`,
+					);
+				} else if (controller.homePageType === 'variable' && !controller.homePage) {
+					pushIssue(
+						issues,
+						`${controllerPath}.homePage`,
+						'Variable controller home page requires a custom property key.',
+					);
+				} else if (
+					(controller.homePageType === 'default' || controller.homePageType === 'branch') &&
+					controller.homePage
+				) {
+					pushIssue(
+						issues,
+						`${controllerPath}.homePage`,
+						`Controller home page must be empty for "${describeValue(controller.homePageType)}".`,
+					);
+				}
+
+				for (const [actionIndex, action] of controller.actions.entries()) {
+					validateControllerAction(
+						action,
+						pageIds,
+						childIds,
+						`${controllerPath}.actions[${actionIndex}]`,
+						issues,
+					);
+				}
+			}
+			if (component.properties.pageController && !controllerMap.has(component.properties.pageController)) {
+				pushIssue(
+					issues,
+					`${resourcePath}.component.properties.pageController`,
+					`Unknown page controller "${describeValue(component.properties.pageController)}".`,
+				);
+			}
+
+			for (const [childIndex, child] of component.displayList.entries()) {
+				if (
+					child.kind === 'component' &&
+					child.instanceProperties !== undefined &&
+					!isValidUamComponentInstanceProperties(child.instanceProperties)
+				) {
+					pushIssue(
+						issues,
+						`${resourcePath}.component.displayList[${childIndex}].instanceProperties`,
+						'Component instance properties must be a complete valid extension snapshot.',
+					);
+				}
+				validateDisplayNode(
+					child,
+					controllerMap,
+					childIds,
+					groupIds,
+					`${resourcePath}.component.displayList[${childIndex}]`,
+					issues,
+				);
+			}
+		}
+	}
+
+	return issues;
+}
+
+export function assertValidUamProject(project: UamProject): void {
+	const issues = validateUamProject(project);
+	if (issues.length === 0) return;
+	throw new Error(`UAM validation failed:\n${issues.map((issue) => `- ${issue.path}: ${issue.message}`).join('\n')}`);
+}

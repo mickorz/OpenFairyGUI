@@ -1,179 +1,94 @@
 # OpenFairyGUI
 
-[![npm core version](https://img.shields.io/npm/v/@openfairygui/core.svg)](https://www.npmjs.com/package/@openfairygui/core)
-[![npm cli version](https://img.shields.io/npm/v/@openfairygui/cli.svg)](https://www.npmjs.com/package/@openfairygui/cli)
+<p align="center"><img src="./docs/public/logo.svg" alt="OpenFairyGUI logo" width="160"></p>
+
+[![Documentation](https://img.shields.io/badge/docs-online-0f766e.svg)](https://fairygui.dev/en/)
+[![npm](https://img.shields.io/badge/npm-%40openfairygui%2Fmcp-cb3837.svg)](https://www.npmjs.com/package/@openfairygui/mcp)
 [![License](https://img.shields.io/badge/license-MIT-007ec6.svg)](./LICENSE)
-[![GitHub](https://img.shields.io/badge/github-OpenFairyGUI%2FOpenFairyGUI-24292e.svg)](https://github.com/OpenFairyGUI/OpenFairyGUI)
 
-[中文](./README.md)
+[中文](./README.md) · [Agent Setup Guide](./docs/en/guide/getting-started.md) · [Documentation](https://fairygui.dev/en/) · [API Reference](https://fairygui.dev/api/) · [Changelog](./CHANGELOG.md)
 
-*A FairyGUI SDK for Node.js and automation workflows.*
+> **A FairyGUI project toolchain for AI agents and automation workflows.**
+> Read, edit, validate, and publish projects through MCP, the CLI, and TypeScript SDKs without starting the desktop editor.
 
-## Introduction
+> **Relationship to FairyGUI:** OpenFairyGUI is an unofficial open-source project built around the FairyGUI project format and toolchain, not an official FairyGUI product. The FairyGUI name, logo, and related brand assets belong to their respective owners. For official products and information, visit the [FairyGUI website](https://fairygui.com/).
 
-OpenFairyGUI provides programmatic access to FairyGUI projects and publish artifacts. Where the editor focuses on interactive authoring, OpenFairyGUI is intended for scripting, batch processing, generators, build pipelines, and CI/CD workflows.
+Let an agent update a specific component's text, position, or controller settings. Use scripts to inspect projects and publish runtime assets, or add stateful project sessions to your own editor.
 
-Current capabilities include:
+| What do you want to do? | Start here |
+|---|---|
+| Let an agent query and edit projects | [Agent setup guide](./docs/en/guide/getting-started.md): installation, MCP configuration, and your first edit |
+| Run batch checks, CI publishing, or limited recovery | [CLI usage](./docs/en/guide/getting-started.md#terminal-workflows): independent installation, checks, and publishing |
+| Build an editor or custom host | [TypeScript SDKs](./docs/en/guide/getting-started.md#typescript-sdks): installation, UAM editing, and host examples |
 
-- Reading and writing FairyGUI project directories
-- Reading and writing published binary packages
-- Inspecting and transforming the document model in code
-- Reconstructing editable FairyGUI projects from publish directories
-- Providing a scriptable CLI for automation
+## An example agent task
+
+> Configure the authorized project's reward panel with Locked, Claimable, and Claimed states. Use a controller and gears to coordinate button text, interaction, and the claimed indicator, preserving everything else. Query and preview the whole batch before applying, validating, saving, and rereading. Stop and report ambiguous targets, revision conflicts, or incomplete validation.
+
+The [setup guide](./docs/en/guide/getting-started.md#complete-your-first-edit) provides an unedited project and a three-state acceptance table. The [reward panel](./docs/en/guide/examples.md#three-state-reward-panel), [layout and entrance animation](./docs/en/guide/examples.md#reward-panel-layout-and-entrance-animation), and [card generation](./docs/en/guide/examples.md#generate-reward-cards-from-a-template) examples run in SDK and real MCP consumer checks.
+
+## Built for agent workflows
+
+- **Discover contracts before calling**: operation schemas, method inputs/outputs, and diagnostics come from canonical types and installed documentation shared by the CLI and MCP.
+- **Base edits on current state**: queries return actual properties and revisions, previews expose change impact, and apply/save check revisions independently. Conflicts require refreshing and replanning.
+- **Report failures faithfully**: missing source bytes, unsupported faithful writeback, rejected paths, and incomplete validation produce explicit results so the host can preserve the session and address the cause.
+- **Consume unsaved state**: `readSessionState` and `readResourceBytes` return bounded, detached model and primary resource-byte copies with edit-revision checks. Reading does not save or hydrate files from disk.
+
+Full state reads are available from `0.5.0-alpha.1`. See the [setup guide](./docs/en/guide/getting-started.md#install-and-check-versions) for stable and prerelease installation. Use the installed documentation to discover supported capabilities and the [contract guide](./docs/en/guide/contracts.md) for response and version boundaries.
+
+[Task evaluations](./docs/en/guide/agent-evaluations.md) check real edits, conflict handling, and safe stopping. CI runs the reference host and oracles; real model evaluations run separately, and deterministic checks are not model success rates.
 
 ## Packages
 
-This repository is organized as a `pnpm workspace` + `Lerna` monorepo with the following packages:
-
 | Package | Purpose |
 |---|---|
-| `@openfairygui/core` | Property graph, document model, project I/O, and binary I/O primitives |
-| `@openfairygui/functions` | Higher-level publish, restore, inspection, and transform workflows |
-| `@openfairygui/cli` | Command-line interface |
-| `@openfairygui/test-utils` | Shared test helpers and fixtures |
+| [`@openfairygui/mcp`](https://www.npmjs.com/package/@openfairygui/mcp) | MCP tools, resources, and prompts |
+| [`@openfairygui/cli`](https://www.npmjs.com/package/@openfairygui/cli) | Inspection, validation, publish, recovery, and offline documentation commands |
+| [`@openfairygui/backend`](https://www.npmjs.com/package/@openfairygui/backend) | Sessions, revisions, queries, previews, transaction submission, and saving |
+| [`@openfairygui/core`](https://www.npmjs.com/package/@openfairygui/core) | UAM, project I/O, and binary protocols |
+| [`@openfairygui/functions`](https://www.npmjs.com/package/@openfairygui/functions) | Inspection, validation, publish, and recovery workflows |
 
-## Scripting API
+MCP provides Backend session editing. Publishing saved projects and limited recovery of trusted local artifacts run through CLI / Node workflows. See [Packages and Tools](./docs/en/guide/packages.md) for SDK entrypoints and host boundaries, and the [runnable examples](./docs/en/guide/examples.md) for publishing and recovery scope.
 
-Install the scripting packages:
+## Recommended Project
 
-```bash
-npm install --save @openfairygui/core @openfairygui/functions
-```
+### FairyGUI Editor Online
 
-Typical usage reads a project into a `Document`, then inspects, transforms, publishes, or writes it back:
+[FairyGUI Editor Online](https://editor.fairygui.dev/) is a browser-based FairyGUI project editor built on OpenFairyGUI. It imports projects from local folders or ZIP files and supports editing, saving, publishing, and previewing directly in the browser.
 
-```ts
-import { NodeIO } from '@openfairygui/core';
-import { inspect, publish } from '@openfairygui/functions';
+[Try it online](https://editor.fairygui.dev/) · [GitHub repository](https://github.com/OpenFairyGUI/FairyGUI-Editor-Online)
 
-const io = new NodeIO();
-const doc = await io.readProject('./MyProject/MyProject.fairy');
+## Go further
 
-const report = inspect(doc);
-console.log(report.projectType, report.totals.packages);
-
-await doc.transform(publish({
-  output: './release',
-}));
-```
-
-If you want to rebuild a project from published output, use the high-level restore workflow from `functions`:
-
-```ts
-import { ProjectType } from '@openfairygui/core';
-import { restore } from '@openfairygui/functions';
-import fs from 'node:fs/promises';
-import path from 'node:path';
-
-await restore({
-  inputDir: './release',
-  output: './restored-project',
-  projectType: ProjectType.Unity,
-  fs: {
-    async readFile(filePath) { return fs.readFile(filePath, 'utf-8'); },
-    async readFileRaw(filePath) {
-      const buf = await fs.readFile(filePath);
-      return new Uint8Array(buf.buffer, buf.byteOffset, buf.byteLength);
-    },
-    async writeFile(filePath, content) {
-      await fs.mkdir(path.dirname(filePath), { recursive: true });
-      await fs.writeFile(filePath, content, 'utf-8');
-    },
-    async writeFileRaw(filePath, data) {
-      await fs.mkdir(path.dirname(filePath), { recursive: true });
-      await fs.writeFile(filePath, data);
-    },
-    async mkdir(dirPath) { await fs.mkdir(dirPath, { recursive: true }); },
-    async readdir(dirPath) { return fs.readdir(dirPath); },
-    async exists(filePath) { try { await fs.access(filePath); return true; } catch { return false; } },
-    async isFile(filePath) { try { return (await fs.stat(filePath)).isFile(); } catch { return false; } },
-    async resolvePath(filePath) { try { return await fs.realpath(filePath); } catch { return path.resolve(filePath); } },
-    async rm(targetPath, options) { await fs.rm(targetPath, { recursive: options?.recursive ?? false, force: options?.force ?? false }); },
-    join: path.join,
-    dirname: path.dirname,
-  },
-});
-```
-
-## Command-line API
-
-Install the CLI:
-
-```bash
-npm install --global @openfairygui/cli
-```
-
-Show help:
-
-```bash
-ofgui --help
-```
-
-Common workflows:
-
-```bash
-# Inspect a project
-ofgui inspect ./MyProject
-
-# Publish a project
-ofgui publish ./MyProject --output ./release
-
-# Override project type from the command line
-ofgui publish ./MyProject --output ./release --project-type unity
-
-# Restore a project from published output
-ofgui restore ./release --output ./restored-project
-
-# Override restored project type
-ofgui restore ./release --output ./restored-project --project-type cocoscreator
-```
-
-`--project-type` accepts either a name or a numeric id, for example:
-
-| Value | Meaning |
+| Direction | Documentation |
 |---|---|
-| `unity` / `0` | Unity |
-| `cocoscreator` / `cocos` / `3` | Cocos Creator |
-| `layabox` / `laya` / `4` | LayaBox |
+| Setup and examples | [Agent Setup Guide](./docs/en/guide/getting-started.md) · [Packages and Tools](./docs/en/guide/packages.md) · [Runnable Examples](./docs/en/guide/examples.md) |
+| Agent contracts and diagnosis | [Installed Documentation](./docs/en/guide/installed-docs.md) · [Contract Discovery](./docs/en/guide/contracts.md) · [Diagnostics and Recovery](./docs/en/guide/diagnostics.md) · [Task Evaluations](./docs/en/guide/agent-evaluations.md) |
+| Architecture and protocols | [Architecture Overview](./docs/en/architecture-overview.md) · [Complete Documentation Index](./docs/en/README.md) · [API Reference](https://fairygui.dev/api/) |
+| Contributing | [Development and Verification](./docs/en/guide/development.md) · [Development Task Recipes](./docs/en/guide/task-recipes.md) |
 
-## Workspace Development
+## Status and boundaries
 
-If you are working directly in this repository rather than consuming npm packages:
+The 0.x APIs may evolve; see the [Changelog](./CHANGELOG.md) for stable releases and prereleases. Node.js hosts require 22+; browser hosts use runtime-neutral or explicit `/web` entrypoints and inject host capabilities. Saving is rejected when faithful writeback is unsupported. A successful preview or state read does not guarantee later writes, publishing, or rendering.
+
+## Local development
+
+Prepare Git, the Node version recommended in `.node-version`, and pnpm from `package.json`, then run from the repository root:
 
 ```bash
-pnpm install
-pnpm build
-pnpm test
-pnpm dev:cli --help
+pnpm repo:setup
 ```
 
-| Command | Description |
-|---|---|
-| `pnpm build` | Build all workspace packages |
-| `pnpm build:cli-deps` | Build the packages required by the CLI |
-| `pnpm build:watch` | Run package builds in watch mode |
-| `pnpm test` | Run the AVA test suite |
-| `pnpm coverage` | Run tests with coverage reporting |
-| `pnpm lint` | Run Biome lint checks |
-| `pnpm dev:cli` | Run the CLI in development mode |
-
-## Documentation
-
-Implementation reference documents are currently maintained in Chinese. Start from [docs/README.md](./docs/README.md).
-
-| Document | Description |
-|---|---|
-| [Architecture Overview](./docs/architecture-overview.md) | Package responsibilities, module boundaries, and core data flow |
-| [Editor Publish Settings](./docs/editor-publish-settings.md) | Publish setting sources, defaults, naming rules, and consumption points |
-| [Published Restore Limitations](./docs/published-project-restore-limitations.md) | Restore capability boundaries when only publish output is available |
-| [Project XML Attribute Protocol](./docs/project-xml-attribute-reference.md) | XML attributes supported for `package.xml`, `component.xml`, and structural nodes |
-| [Project XML DisplayList Tag Alignment](./docs/project-xml-displaylist-variants.md) | Alignment of raw `displayList` tags and editor display item types |
-| [Binary Package Format](./docs/fairygui-binary-package-format.md) | Current `.fui` / `_fui.bytes` protocol reference |
-
-## Status
-
-The project is under active development. APIs and package contents should be treated as current implementation rather than a long-term compatibility guarantee.
+Choose checks for daily changes in the [development guide](./docs/en/guide/development.md#verification-entrypoints); use `pnpm check:ci` to reproduce full CI.
 
 ## License
 
-MIT
+[MIT](./LICENSE)
+
+<!-- product-facts:start -->
+Package: `0.7.0` · Backend contract: `3.0.0` · Capability schema: `15`
+
+Operations: 41 · Backend methods: 17 · CLI commands: 16 · Diagnostic codes: 104
+<!-- product-facts:end -->
+
+[Contributing](./CONTRIBUTING.md)

@@ -19,6 +19,11 @@ export class WriteBuffer {
 	private _strings: string[];
 	/** Raw custom strings written to block 5, keyed by string table index. */
 	private _customStrings: Array<{ index: number; value: string }>;
+	private static _assertInteger(value: number, min: number, max: number, type: string): void {
+		if (!Number.isSafeInteger(value) || value < min || value > max) {
+			throw new RangeError(`${type} value is out of range: ${value}`);
+		}
+	}
 
 	constructor(initialSize = 4096, parent?: WriteBuffer) {
 		this._buf = new ArrayBuffer(initialSize);
@@ -35,8 +40,12 @@ export class WriteBuffer {
 		}
 	}
 
-	get pos(): number { return this._pos; }
-	set pos(v: number) { this._pos = v; }
+	get pos(): number {
+		return this._pos;
+	}
+	set pos(v: number) {
+		this._pos = v;
+	}
 
 	/** Returns a trimmed Uint8Array of everything written so far. */
 	toUint8Array(): Uint8Array {
@@ -55,37 +64,44 @@ export class WriteBuffer {
 	}
 
 	writeUint8(v: number): void {
+		WriteBuffer._assertInteger(v, 0, 0xff, 'uint8');
 		this._ensure(1);
 		this._view.setUint8(this._pos++, v);
 	}
 	writeInt8(v: number): void {
+		WriteBuffer._assertInteger(v, -0x80, 0x7f, 'int8');
 		this._ensure(1);
 		this._view.setInt8(this._pos++, v);
 	}
 
 	writeUint16(v: number): void {
+		WriteBuffer._assertInteger(v, 0, 0xffff, 'uint16');
 		this._ensure(2);
 		this._view.setUint16(this._pos, v, false);
 		this._pos += 2;
 	}
 	writeInt16(v: number): void {
+		WriteBuffer._assertInteger(v, -0x8000, 0x7fff, 'int16');
 		this._ensure(2);
 		this._view.setInt16(this._pos, v, false);
 		this._pos += 2;
 	}
 
 	writeUint32(v: number): void {
+		WriteBuffer._assertInteger(v, 0, 0xffffffff, 'uint32');
 		this._ensure(4);
 		this._view.setUint32(this._pos, v, false);
 		this._pos += 4;
 	}
 	writeInt32(v: number): void {
+		WriteBuffer._assertInteger(v, -0x80000000, 0x7fffffff, 'int32');
 		this._ensure(4);
 		this._view.setInt32(this._pos, v, false);
 		this._pos += 4;
 	}
 
 	writeFloat32(v: number): void {
+		if (!Number.isFinite(v)) throw new RangeError(`float32 value must be finite: ${v}`);
 		this._ensure(4);
 		this._view.setFloat32(this._pos, v, false);
 		this._pos += 4;
@@ -98,6 +114,8 @@ export class WriteBuffer {
 	/** Write a uint16-prefixed UTF-8 string. */
 	writeUTFString(s: string): void {
 		const encoded = new TextEncoder().encode(s);
+		if (encoded.byteLength > 0xffff)
+			throw new RangeError(`UTF string exceeds uint16 byte length: ${encoded.byteLength}`);
 		this.writeUint16(encoded.byteLength);
 		this._ensure(encoded.byteLength);
 		new Uint8Array(this._buf, this._pos, encoded.byteLength).set(encoded);
@@ -127,6 +145,8 @@ export class WriteBuffer {
 		const existing = this._stringMap.get(s);
 		if (existing !== undefined) return existing;
 		const index = this._strings.length;
+		if (index >= EMPTY_STRING_INDEX)
+			throw new RangeError(`String table exceeds protocol index limit: ${index + 1}`);
 		this._strings.push(s);
 		this._stringMap.set(s, index);
 		return index;
@@ -171,6 +191,8 @@ export class WriteBuffer {
 			// No cache: allocate a unique string-table slot without deduplication.
 			// Editor-aligned UI strings still live in the main string table.
 			const index = this._strings.length;
+			if (index >= EMPTY_STRING_INDEX)
+				throw new RangeError(`String table exceeds protocol index limit: ${index + 1}`);
 			this._strings.push(s);
 			this.writeUint16(index);
 		}
@@ -186,18 +208,18 @@ export class WriteBuffer {
 	 *   If false, always writes 0xFF for the alpha byte.
 	 * @param defaultColor - Default color value if colorStr is empty/null (as 0xAARRGGBB uint32)
 	 */
-	writeColor(colorStr: string | null | undefined, hasAlpha: boolean = true, defaultColor: number = 0xFF000000): void {
+	writeColor(colorStr: string | null | undefined, hasAlpha: boolean = true, defaultColor: number = 0xff000000): void {
 		let color = defaultColor;
 		if (colorStr && colorStr.length > 0) {
 			color = parseHtmlColor(colorStr, hasAlpha);
 		}
-		this.writeUint8((color >> 16) & 0xFF); // R
-		this.writeUint8((color >> 8) & 0xFF);  // G
-		this.writeUint8(color & 0xFF);         // B
+		this.writeUint8((color >> 16) & 0xff); // R
+		this.writeUint8((color >> 8) & 0xff); // G
+		this.writeUint8(color & 0xff); // B
 		if (hasAlpha) {
-			this.writeUint8((color >> 24) & 0xFF); // A
+			this.writeUint8((color >> 24) & 0xff); // A
 		} else {
-			this.writeUint8(0xFF); // A = 255
+			this.writeUint8(0xff); // A = 255
 		}
 	}
 
@@ -237,7 +259,10 @@ function parseHtmlColor(s: string, hasAlpha: boolean): number {
 		hex = hex[0] + hex[0] + hex[1] + hex[1] + hex[2] + hex[2];
 	}
 
-	let r = 0, g = 0, b = 0, a = 0xFF;
+	let r = 0,
+		g = 0,
+		b = 0,
+		a = 0xff;
 
 	if (hex.length === 8) {
 		if (hasAlpha) {
@@ -251,7 +276,7 @@ function parseHtmlColor(s: string, hasAlpha: boolean): number {
 			r = parseInt(hex.slice(2, 4), 16);
 			g = parseInt(hex.slice(4, 6), 16);
 			b = parseInt(hex.slice(6, 8), 16);
-			a = 0xFF;
+			a = 0xff;
 		}
 	} else if (hex.length >= 6) {
 		r = parseInt(hex.slice(0, 2), 16);
@@ -259,5 +284,5 @@ function parseHtmlColor(s: string, hasAlpha: boolean): number {
 		b = parseInt(hex.slice(4, 6), 16);
 	}
 
-	return ((a & 0xFF) << 24) | ((r & 0xFF) << 16) | ((g & 0xFF) << 8) | (b & 0xFF);
+	return ((a & 0xff) << 24) | ((r & 0xff) << 16) | ((g & 0xff) << 8) | (b & 0xff);
 }

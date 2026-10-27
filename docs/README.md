@@ -1,22 +1,40 @@
 # OpenFairyGUI 文档总览
 
-本文档目录用于维护协议、设置结构与架构说明。文档以中文为主，只描述当前正式口径，不记录历史兼容方案、过渡结构或未来规划。
+本文档目录用于维护协议、设置结构与架构说明，并作为官网静态文档站的内容源。文档以中文为主，只描述当前正式口径，不记录历史兼容方案、过渡结构或未来规划。
+
+[English documentation](./en/README.md)
 
 ## 文档索引
 
 | 文档 | 说明 |
 |---|---|
-| [架构图说明](./architecture-overview.md) | 说明 monorepo 包职责、模块边界、核心数据流与 `extras` 的当前定位 |
+| [仓库开发与验证](./guide/development.md) | 可复现启动、参考语料、任务路由、验证范围与 PR 门禁 |
+| [开发任务指引](./guide/task-recipes.md) | XML 字段、UAM operation、Backend/MCP 接入、发布排查与协议取证路径 |
+| [可运行示例与消费者验证](./guide/examples.md) | 奖励面板状态、布局动画与模板生成卡片、SDK/MCP 编辑验收、tarball 隔离安装、真实浏览器存储与发布/受限恢复 |
+| [契约事实源与操作查询](./guide/contracts.md) | Core/Backend 类型生成的 operation、MCP 输入输出、二进制传输与漂移检查 |
+| [诊断与恢复](./guide/diagnostics.md) | 诊断归属、逐码文档与只读恢复起点；不自动修复 |
+| [安装版本文档与产品诊断](./guide/installed-docs.md) | CLI/MCP 共用离线语料、薄 Skill 与只读产品 doctor |
+| [真实 Agent 任务评测](./guide/agent-evaluations.md) | 十个真实 tarball 任务、确定性结果判定、手动模型观察与失败复现 |
+| [快速开始](./guide/getting-started.md) | 本地 MCP 接入、安装版本核对、首个可验证编辑任务与 CLI / SDK 入口 |
+| [包与工具](./guide/packages.md) | 选择公开包与宿主入口 |
+| [版本变更记录](https://github.com/OpenFairyGUI/OpenFairyGUI/blob/main/CHANGELOG_CN.md) | 按发布版本汇总公开功能、修复、破坏性变更与维护事项 |
+| [架构图说明](./architecture-overview.md) | 说明 monorepo 包职责、模块边界、核心数据流，以及 `backend` 的 browser-safe storage adapter、`materializeSession`、stateful runtime、service-layer、events/cache 与 `mcp` 薄适配 / resources / prompts 定位 |
+| [工程验证](./project-validation.md) | 说明工程读取、UAM 完整性、资源与宿主解码验证，以及 API、CLI、Backend、MCP 的统一报告契约 |
 | [编辑器发布设置](./editor-publish-settings.md) | 说明 FairyGUI 编辑器发布设置的结构、字段、默认值与写回规则 |
-| [发布产物还原限制](./published-project-restore-limitations.md) | 记录仅凭发布目录重建工程时，当前已确认不可稳定恢复的内容边界 |
+| [Publish 插件](./publish-plugins.md) | 说明 OpenFairyGUI publish 插件目录、manifest、生命周期、降级规则，以及与 FairyGUI 编辑器插件的关系 |
+| [发布产物恢复边界](./published-project-restore-limitations.md) | 记录可信本地发布物的受限恢复范围、安全约束与不可稳定恢复的内容 |
 | [Project XML 属性协议](./project-xml-attribute-reference.md) | 汇总 `package.xml`、`component.xml` 及结构节点当前正式支持的 XML 属性协议 |
 | [Project XML DisplayList Tag 对齐](./project-xml-displaylist-variants.md) | 固定 `component.xml` `displayList` 的原始 XML tag、容器 variant 与 editor `DisplayListItem.type` 对齐口径 |
 | [二进制封包协议](./fairygui-binary-package-format.md) | 说明 `.fui` / `_fui.bytes` 的协议布局、block 结构与 Component 解码规则 |
+| [网站首页](./index.md) | 面向使用者的入门、包导航、参考文档与 API 入口 |
 
 ## 使用约定
 
 | 项目 | 说明 |
 |---|---|
-| 适用对象 | 仓库维护者、后续实现者、协议补齐与发布链路开发者 |
+| 适用对象 | Agent 与工具使用者、编辑器宿主开发者、仓库维护者及协议贡献者 |
 | 文档口径 | 只写当前正式口径；文档同步要求以 `AGENTS.md` 为准 |
 | README 入口 | 根目录 `README.md` 与 `README_EN.md` 只承担导航，不承载协议正文 |
+| 官网构建 | `pnpm docs:dev` 用于本地预览；`pnpm docs:build` 会生成公开 API 参考和静态站点 |
+
+[贡献](./guide/development.md#贡献入口)

@@ -1,9 +1,9 @@
 node_modules/
-referer/
+/reference/
 release/
+.release/
 restore/
 **/dist/
-/[Oo]bj/
 
 # Local AI/tooling config
 .claude/
@@ -24,6 +24,12 @@ coverage/
 .nyc_output/
 .turbo/
 *.tsbuildinfo
+<<<<<<< HEAD
+=======
+docs/.vitepress/cache/
+docs/.vitepress/dist/
+docs/public/api/
+>>>>>>> upstream/main
 
 # OS files
 .DS_Store
@@ -34,6 +40,7 @@ Thumbs.db
 .env.*
 !.env.example
 
+<<<<<<< HEAD
 # Debug scripts
 debug_*.mjs
 
@@ -44,6 +51,11 @@ skipped_sprites.txt
 
 # AI agent
 AGENTS.md
+=======
+# Personal agent overrides (not automatically loaded as repository instructions)
+AGENTS.local.md
+.agents.local/
+>>>>>>> upstream/main
 .omx
 .agents/
 .codex/

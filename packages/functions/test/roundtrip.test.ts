@@ -2,8 +2,15 @@ import test from 'ava';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import sharp from 'sharp';
-import { NodeIO } from '@openfairygui/core';
-import { publish, restore, type PublishFileSystem, type RestoreFileSystem, type RestoreImageCropInput, type RestoreImageExtractInput } from '../src/index.js';
+import { NodeIO } from '@openfairygui/core/node';
+import {
+	publish,
+	restore,
+	type PublishFileSystem,
+	type RestoreFileSystem,
+	type RestoreImageCropInput,
+	type RestoreImageExtractInput,
+} from '../src/index.js';
 import { diffXmlProjects, diffImageProjects } from '../src/roundtrip-diff.js';
 
 const ROOT_DIR = path.resolve(import.meta.dirname, '../../..');
@@ -24,7 +31,9 @@ async function extractImage(input: RestoreImageExtractInput): Promise<Uint8Array
 					channels: 4,
 					background: { r: 0, g: 0, b: 0, alpha: 0 },
 				},
-			}).png().toBuffer();
+			})
+				.png()
+				.toBuffer();
 		}
 		throw new Error('Cannot extract zero-size sprite with no expected dimensions');
 	}
@@ -36,12 +45,13 @@ async function extractImage(input: RestoreImageExtractInput): Promise<Uint8Array
 	});
 	if (input.rotated) pipeline = pipeline.rotate(90);
 	const { data, info } = await pipeline.png().toBuffer({ resolveWithObject: true });
-	const needsOriginalCanvas = input.expectedWidth > 0 && input.expectedHeight > 0 && (
-		input.offsetX !== 0
-		|| input.offsetY !== 0
-		|| info.width !== input.expectedWidth
-		|| info.height !== input.expectedHeight
-	);
+	const needsOriginalCanvas =
+		input.expectedWidth > 0 &&
+		input.expectedHeight > 0 &&
+		(input.offsetX !== 0 ||
+			input.offsetY !== 0 ||
+			info.width !== input.expectedWidth ||
+			info.height !== input.expectedHeight);
 	if (needsOriginalCanvas) {
 		return sharp({
 			create: {
@@ -111,6 +121,9 @@ function createRestoreFs(): RestoreFileSystem {
 		async rm(targetPath: string, options?: { recursive?: boolean; force?: boolean }): Promise<void> {
 			await fs.rm(targetPath, { recursive: options?.recursive ?? false, force: options?.force ?? false });
 		},
+		async rename(from: string, to: string): Promise<void> {
+			await fs.rename(from, to);
+		},
 		join(...paths: string[]): string {
 			return path.join(...paths);
 		},
@@ -154,12 +167,14 @@ test.serial('roundtrip: publish restore diff generates report', async (t) => {
 	const io = new NodeIO();
 	const doc = await io.readProject(path.join(SOURCE_DIR, 'FairyGUI-Unity-Examples.fairy'));
 
-	await doc.transform(publish({
-		output: PUBLISH_DIR,
-		fs: createPublishFs(),
-		encoder: sharp,
-		basePath: path.join(SOURCE_DIR, 'assets'),
-	}));
+	await doc.transform(
+		publish({
+			output: PUBLISH_DIR,
+			fs: createPublishFs(),
+			encoder: sharp as unknown as import('@openfairygui/functions').PublishOptions['encoder'],
+			basePath: path.join(SOURCE_DIR, 'assets'),
+		}),
+	);
 
 	// Step 2: restore PublishFolder -> CrackFgui
 	await restore({
@@ -175,13 +190,16 @@ test.serial('roundtrip: publish restore diff generates report', async (t) => {
 		},
 		padImage: async (src, out, w, h) => {
 			const meta = await sharp(src).metadata();
-			await sharp(src).extend({
-				top: 0,
-				left: 0,
-				right: w - (meta.width ?? 0),
-				bottom: h - (meta.height ?? 0),
-				background: { r: 0, g: 0, b: 0, alpha: 0 },
-			}).png().toFile(out);
+			await sharp(src)
+				.extend({
+					top: 0,
+					left: 0,
+					right: w - (meta.width ?? 0),
+					bottom: h - (meta.height ?? 0),
+					background: { r: 0, g: 0, b: 0, alpha: 0 },
+				})
+				.png()
+				.toFile(out);
 		},
 	});
 
@@ -203,15 +221,14 @@ test.serial('roundtrip: publish restore diff generates report', async (t) => {
 		if (d.type === 'missing_image') {
 			console.log(`  [MISSING] ${d.package}/${d.file}`);
 		} else {
-			console.log(`  [SIZE] ${d.package}/${d.file}: expected ${d.expectedWidth}x${d.expectedHeight}, got ${d.actualWidth}x${d.actualHeight}`);
+			console.log(
+				`  [SIZE] ${d.package}/${d.file}: expected ${d.expectedWidth}x${d.expectedHeight}, got ${d.actualWidth}x${d.actualHeight}`,
+			);
 		}
 	}
 
 	// Step 4: diff SourceFgui/assets vs CrackFgui/assets XML
-	const report = await diffXmlProjects(
-		path.join(SOURCE_DIR, 'assets'),
-		path.join(CRACK_DIR, 'assets'),
-	);
+	const report = await diffXmlProjects(path.join(SOURCE_DIR, 'assets'), path.join(CRACK_DIR, 'assets'));
 
 	// Step 5: 写入报告文件（包含图片和XML对比结果）
 	const fullReport = { images: imageReport, xml: report };

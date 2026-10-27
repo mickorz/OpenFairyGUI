@@ -1,7 +1,8 @@
-import { RefList } from 'property-graph';
+import { RefList, type Ref } from 'property-graph';
 import { type Nullable, PropertyType } from '../constants.js';
 import { ExtensibleProperty, type IExtensibleProperty } from './extensible-property.js';
 import type { FontGlyph } from './font-glyph.js';
+import type { FairyBuffer } from './buffer.js';
 
 interface IFontResource extends IExtensibleProperty {
 	id: string;
@@ -11,6 +12,7 @@ interface IFontResource extends IExtensibleProperty {
 	fileName: string;
 	textureId: string;
 	exported: boolean;
+	favorite: boolean;
 	renderMode: string;
 	samplePointSize: number;
 	ttf: boolean;
@@ -21,10 +23,11 @@ interface IFontResource extends IExtensibleProperty {
 	xAdvance: number;
 	lineHeight: number;
 	glyphs: RefList<FontGlyph>;
+	sourceData: Ref<FairyBuffer>;
 }
 
 /**
- * A bitmap font resource within a FairyGUI package.
+ * A bitmap font or imported engine font resource within a FairyGUI package.
  * @category Properties
  */
 export class FontResource extends ExtensibleProperty<IFontResource> {
@@ -43,6 +46,7 @@ export class FontResource extends ExtensibleProperty<IFontResource> {
 			fileName: '',
 			textureId: '',
 			exported: false,
+			favorite: false,
 			renderMode: '',
 			samplePointSize: 0,
 			ttf: false,
@@ -53,58 +57,148 @@ export class FontResource extends ExtensibleProperty<IFontResource> {
 			xAdvance: 0,
 			lineHeight: 0,
 			glyphs: new RefList<FontGlyph>(),
+			sourceData: null,
 		});
 	}
 
-	public getId(): string { return this.get('id'); }
-	public setId(id: string): this { return this.set('id', id); }
+	public getId(): string {
+		return this.get('id');
+	}
+	public setId(id: string): this {
+		return this.set('id', id);
+	}
 
-	public getPath(): string { return this.get('path'); }
-	public setPath(path: string): this { return this.set('path', path); }
+	public getPath(): string {
+		return this.get('path');
+	}
+	public setPath(path: string): this {
+		return this.set('path', path);
+	}
 
-	public getBranch(): string { return this.get('branch'); }
-	public setBranch(branch: string): this { return this.set('branch', branch); }
+	public getBranch(): string {
+		return this.get('branch');
+	}
+	public setBranch(branch: string): this {
+		return this.set('branch', branch);
+	}
 
-	public getBranchItemIds(): string[] { return [...this.get('branchItemIds')]; }
-	public setBranchItemIds(ids: string[]): this { return this.set('branchItemIds', [...ids]); }
+	public getBranchItemIds(): string[] {
+		return [...this.get('branchItemIds')];
+	}
+	public setBranchItemIds(ids: string[]): this {
+		return this.set('branchItemIds', [...ids]);
+	}
 
-	public getFileName(): string { return this.get('fileName'); }
-	public setFileName(fileName: string): this { return this.set('fileName', fileName); }
+	public getFileName(): string {
+		return this.get('fileName');
+	}
+	public setFileName(fileName: string): this {
+		return this.set('fileName', fileName);
+	}
+	/** Imported TTF/TTC/OTF assets are resolved by font name in the host engine, not embedded as bitmap fonts. */
+	public isExternalFont(): boolean {
+		return /\.(?:ttf|ttc|otf)$/i.test(this.getFileName());
+	}
 
-	public getTextureId(): string { return this.get('textureId'); }
-	public setTextureId(textureId: string): this { return this.set('textureId', textureId); }
+	public getTextureId(): string {
+		return this.get('textureId');
+	}
+	public setTextureId(textureId: string): this {
+		return this.set('textureId', textureId);
+	}
 
-	public getExported(): boolean { return this.get('exported'); }
-	public setExported(v: boolean): this { return this.set('exported', v); }
+	public getExported(): boolean {
+		return this.get('exported');
+	}
+	public setExported(v: boolean): this {
+		return this.set('exported', v);
+	}
 
-	public getRenderMode(): string { return this.get('renderMode'); }
-	public setRenderMode(v: string): this { return this.set('renderMode', v); }
+	public getFavorite(): boolean {
+		return this.get('favorite');
+	}
+	public setFavorite(v: boolean): this {
+		return this.set('favorite', v);
+	}
 
-	public getSamplePointSize(): number { return this.get('samplePointSize'); }
-	public setSamplePointSize(v: number): this { return this.set('samplePointSize', v); }
+	public getRenderMode(): string {
+		return this.get('renderMode');
+	}
+	public setRenderMode(v: string): this {
+		return this.set('renderMode', v);
+	}
 
-	public getTtf(): boolean { return this.get('ttf'); }
-	public setTtf(v: boolean): this { return this.set('ttf', v); }
+	public getSamplePointSize(): number {
+		return this.get('samplePointSize');
+	}
+	public setSamplePointSize(v: number): this {
+		return this.set('samplePointSize', v);
+	}
 
-	public getTint(): boolean { return this.get('tint'); }
-	public setTint(v: boolean): this { return this.set('tint', v); }
+	public getTtf(): boolean {
+		return this.get('ttf');
+	}
+	public setTtf(v: boolean): this {
+		return this.set('ttf', v);
+	}
 
-	public getAutoScale(): boolean { return this.get('autoScale'); }
-	public setAutoScale(v: boolean): this { return this.set('autoScale', v); }
+	public getTint(): boolean {
+		return this.get('tint');
+	}
+	public setTint(v: boolean): this {
+		return this.set('tint', v);
+	}
 
-	public getHasChannel(): boolean { return this.get('hasChannel'); }
-	public setHasChannel(v: boolean): this { return this.set('hasChannel', v); }
+	public getAutoScale(): boolean {
+		return this.get('autoScale');
+	}
+	public setAutoScale(v: boolean): this {
+		return this.set('autoScale', v);
+	}
 
-	public getFontSize(): number { return this.get('fontSize'); }
-	public setFontSize(v: number): this { return this.set('fontSize', v); }
+	public getHasChannel(): boolean {
+		return this.get('hasChannel');
+	}
+	public setHasChannel(v: boolean): this {
+		return this.set('hasChannel', v);
+	}
 
-	public getXAdvance(): number { return this.get('xAdvance'); }
-	public setXAdvance(v: number): this { return this.set('xAdvance', v); }
+	public getFontSize(): number {
+		return this.get('fontSize');
+	}
+	public setFontSize(v: number): this {
+		return this.set('fontSize', v);
+	}
 
-	public getLineHeight(): number { return this.get('lineHeight'); }
-	public setLineHeight(v: number): this { return this.set('lineHeight', v); }
+	public getXAdvance(): number {
+		return this.get('xAdvance');
+	}
+	public setXAdvance(v: number): this {
+		return this.set('xAdvance', v);
+	}
 
-	public addGlyph(glyph: FontGlyph): this { return this.addRef('glyphs', glyph); }
-	public removeGlyph(glyph: FontGlyph): this { return this.removeRef('glyphs', glyph); }
-	public listGlyphs(): FontGlyph[] { return this.listRefs('glyphs'); }
+	public getLineHeight(): number {
+		return this.get('lineHeight');
+	}
+	public setLineHeight(v: number): this {
+		return this.set('lineHeight', v);
+	}
+
+	public addGlyph(glyph: FontGlyph): this {
+		return this.addRef('glyphs', glyph);
+	}
+	public removeGlyph(glyph: FontGlyph): this {
+		return this.removeRef('glyphs', glyph);
+	}
+	public listGlyphs(): FontGlyph[] {
+		return this.listRefs('glyphs');
+	}
+
+	/** Primary source-file bytes for this font resource. */
+	public getSourceData(): FairyBuffer | null {
+		return this.getRef('sourceData' as never) as FairyBuffer | null;
+	}
+	public setSourceData(buffer: FairyBuffer | null): this {
+		return this.setRef('sourceData' as never, buffer as never);
+	}
 }

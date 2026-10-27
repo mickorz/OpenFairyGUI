@@ -1,0 +1,176 @@
+import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
+import { z } from 'zod';
+import {
+	BACKEND_CAPABILITY_SCHEMA_VERSION,
+	BACKEND_CONTRACT_VERSION,
+	type BackendRuntime,
+	type BackendMethodName,
+} from '@openfairygui/backend';
+import {
+	isOpenFairyGuiMcpPayloadWithinBudget,
+	OPENFAIRYGUI_BACKEND_TOOL_DEFINITIONS,
+	type OpenFairyGuiBackendToolName,
+} from './tool-definitions.js';
+
+import { decodeToolBytes, focusContractIssues, CONTRACT_SNAPSHOT } from './contract-schema.js';
+import type { McpUnhandledFailure, McpResponseBudgetFailure } from './tool-metadata.js';
+
+export type OpenFairyGuiBackendRuntime = Pick<BackendRuntime, BackendMethodName>;
+
+/** Host policy runs after input validation, before the single Backend invocation. */
+export interface OpenFairyGuiMcpToolPolicy {
+	/** Explicit Host-owned failure envelope, carried in structuredContent.backendResult. */
+	failureSchema: z.ZodType<{ ok: false }>;
+	/** Return a declared failure to stop, or undefined to call Backend with the original input. */
+	beforeCall(
+		input: Readonly<Record<string, unknown>>,
+	): { ok: false } | undefined | Promise<{ ok: false } | undefined>;
+}
+
+// Some clients omit structuredContent for failed calls. Keep actionable codes in
+// bounded text without duplicating arbitrary diagnostics or binary payloads.
+function failureText(payload: unknown): string {
+	const record = (value: unknown): Record<string, unknown> =>
+		value !== null && typeof value === 'object' ? (value as Record<string, unknown>) : {};
+	const root = record(payload),
+		error = record(root.error),
+		meta = record(root.meta);
+	const bounded = (value: unknown, limit: number) => (typeof value === 'string' ? value.slice(0, limit) : undefined);
+	const codes = new Set<string>();
+	let truncated = false;
+	for (const entries of [error.issues, error.diagnostics, meta.diagnostics]) {
+		if (!Array.isArray(entries)) continue;
+		for (const entry of entries) {
+			const code = bounded(record(entry).code, 128);
+			if (!code || codes.has(code)) continue;
+			if (codes.size === 32) {
+				truncated = true;
+				break;
+			}
+			codes.add(code);
+		}
+	}
+	return JSON.stringify({
+		ok: false,
+		error: { code: bounded(error.code, 128), message: bounded(error.message, 1024) },
+		diagnosticCodes: [...codes],
+		...(truncated ? { diagnosticCodesTruncated: true } : {}),
+		requestId: bounded(meta.requestId, 128),
+		fullResult: 'structuredContent.backendResult',
+	});
+}
+
+function jsonResult(payload: unknown, isError = false, paths: string[][] = []): CallToolResult {
+	const envelope = { backendResult: structuredClone(payload) };
+	function encode(value: unknown, parts: string[]): void {
+		if (!value || typeof value !== 'object') return;
+		const [key, ...rest] = parts;
+		const record = value as Record<string, unknown>;
+		for (const name of key === '*' ? Object.keys(record) : [key]) {
+			if (!Object.hasOwn(record, name)) continue;
+			if (rest.length) encode(record[name], rest);
+			else if (record[name] instanceof Uint8Array) record[name] = Buffer.from(record[name]).toString('base64');
+		}
+	}
+	for (const path of paths) encode(envelope, path);
+	const text = JSON.stringify(envelope.backendResult);
+	const wirePayload = JSON.parse(text) as unknown;
+	return {
+		content: [
+			{
+				type: 'text',
+				text: isError ? failureText(wirePayload) : 'Result available in structuredContent.backendResult.',
+			},
+		],
+		structuredContent: {
+			backendResult: wirePayload,
+		},
+		isError,
+	};
+}
+
+function isBackendFailure(value: unknown): boolean {
+	return typeof value === 'object' && value !== null && 'ok' in value && (value as { ok?: unknown }).ok === false;
+}
+
+function unhandledBackendFailure(startedAt: number): McpUnhandledFailure {
+	return {
+		ok: false,
+		meta: {
+			requestId: crypto.randomUUID(),
+			durationMs: Math.max(0, Date.now() - startedAt),
+			warnings: [],
+			diagnostics: [],
+			stage: 'runtime',
+			contractVersion: BACKEND_CONTRACT_VERSION,
+			capabilitySchemaVersion: BACKEND_CAPABILITY_SCHEMA_VERSION,
+		},
+		error: {
+			code: 'backend_unhandled_error',
+			message: 'Backend tool execution failed.',
+		},
+	};
+}
+
+export async function callOpenFairyGuiBackendTool(
+	runtime: OpenFairyGuiBackendRuntime,
+	name: OpenFairyGuiBackendToolName,
+	input: Record<string, unknown>,
+	policy?: OpenFairyGuiMcpToolPolicy,
+): Promise<CallToolResult> {
+	const definition = OPENFAIRYGUI_BACKEND_TOOL_DEFINITIONS.find((entry) => entry.name === name);
+	if (!definition) throw new RangeError(`Unknown OpenFairyGUI backend MCP tool: ${name}`);
+	const bytePaths = CONTRACT_SNAPSHOT.tools[definition.backendMethod].bytePaths;
+	if (!isOpenFairyGuiMcpPayloadWithinBudget(input, bytePaths)) {
+		throw new RangeError('MCP input exceeds the depth, node, key, string, or byte budget.');
+	}
+	const checked = definition.inputSchema.safeParse(input);
+	if (!checked.success) throw new z.ZodRealError(focusContractIssues(checked.error.issues, input));
+	const parsed = checked.data as Record<string, unknown>;
+	const decoded = decodeToolBytes(parsed, bytePaths);
+	const startedAt = Date.now();
+	try {
+		let hostFailure = await policy?.beforeCall(structuredClone(parsed));
+		if (hostFailure !== undefined) {
+			hostFailure = policy!.failureSchema.parse(hostFailure);
+			if (!isBackendFailure(hostFailure)) throw new TypeError('Host policy must return a failure or undefined.');
+		}
+		const result =
+			hostFailure ??
+			(await Reflect.apply(
+				runtime[definition.backendMethod],
+				runtime,
+				definition.backendMethod === 'getCapabilities' ? [] : [decoded],
+			));
+		let response = jsonResult(
+			result,
+			isBackendFailure(result),
+			CONTRACT_SNAPSHOT.tools[definition.backendMethod].outputBytePaths,
+		);
+		if (
+			definition.maxResponseBytes !== undefined &&
+			new TextEncoder().encode(JSON.stringify(response)).byteLength > definition.maxResponseBytes
+		) {
+			response = jsonResult(
+				{
+					...unhandledBackendFailure(startedAt),
+					error: {
+						code: 'mcp_response_budget_exceeded',
+						message: 'The complete MCP tool response exceeds its byte limit.',
+						maxBytes: definition.maxResponseBytes,
+					},
+				} satisfies McpResponseBudgetFailure,
+				true,
+			);
+			hostFailure = undefined;
+		}
+		if (hostFailure === undefined) definition.outputSchema.parse(response.structuredContent);
+		else policy!.failureSchema.parse(response.structuredContent?.backendResult);
+		return response;
+	} catch (error) {
+		const failure = unhandledBackendFailure(startedAt);
+		// Callers get a stable envelope without internals; the host keeps the cause on stderr, which stdio leaves free.
+		console.error(`[openfairygui-mcp] ${name} failed (requestId ${failure.meta.requestId}):`, error);
+		return jsonResult(failure, true);
+	}
+}

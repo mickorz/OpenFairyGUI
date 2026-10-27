@@ -11,31 +11,64 @@
 	"bugs": {
 		"url": "https://github.com/OpenFairyGUI/OpenFairyGUI/issues"
 	},
+	"engines": {
+		"node": ">=22"
+	},
 	"type": "module",
 	"scripts": {
-		"build": "lerna run build",
-		"build:cli-deps": "pnpm --filter @openfairygui/core build && pnpm --filter @openfairygui/functions build && pnpm --filter @openfairygui/cli build",
-		"build:watch": "lerna run build:watch --parallel --stream",
-		"clean:dist": "rm -rf packages/*/dist/** | true",
-		"clean:deps": "rm -rf packages/*/node_modules/** | true",
+		"repo:setup": "pnpm refs:sync && pnpm install --frozen-lockfile && pnpm build && pnpm test:repo && pnpm repo:doctor",
+		"repo:doctor": "node scripts/repo-doctor.mjs",
+		"refs:status": "node scripts/repo-doctor.mjs refs",
+		"refs:verify": "node scripts/repo-doctor.mjs refs --strict",
+		"refs:sync": "git submodule update --init --recursive",
+		"refs:grep": "node scripts/refs-grep.mjs",
+		"check:fast": "node scripts/test-changed.mjs --check",
+		"check": "pnpm refs:verify && pnpm lint:ci && pnpm typecheck && pnpm test:repo && pnpm test",
+		"check:ci": "node scripts/check-ci.mjs",
+		"pack:check": "node scripts/pack-smoke.mjs",
+		"eval:agent": "node scripts/agent-evals.mjs",
+		"check:agent-links": "node scripts/check-guidance.mjs",
+		"docs:check": "pnpm check:agent-links && pnpm contracts:check",
+		"contracts:generate": "node scripts/generate-contracts.mjs",
+		"contracts:check": "node scripts/generate-contracts.mjs --check",
+		"test:repo": "node --test scripts/repository.test.mjs scripts/contracts.test.mjs scripts/agent-evals.test.mjs",
+		"test:changed": "node scripts/test-changed.mjs",
+		"build": "pnpm -r --if-present run build",
+		"build:cli-deps": "pnpm --filter @openfairygui/core build && pnpm --filter @openfairygui/functions build && pnpm --filter @openfairygui/backend build && pnpm --filter @openfairygui/cli build",
+		"build:watch": "pnpm -r --parallel --stream --if-present run build:watch",
+		"clean:dist": "node scripts/clean.mjs dist",
+		"clean:deps": "node scripts/clean.mjs node_modules",
 		"dev:cli": "tsx packages/cli/src/cli.ts",
 		"dev:web": "tsx packages/web/src/server.ts",
-		"test": "ava --no-worker-threads",
-		"test:debug": "ava debug --no-worker-threads",
-		"coverage": "c8 --reporter=lcov --reporter=text pnpm test -- --tap",
-		"lint": "biome lint packages",
-		"lint:ci": "biome lint packages",
-		"bundle": "esbuild packages/cli/src/cli.ts --bundle --platform=node --format=esm --external:sharp --outfile=fairygui-tools.mjs"
+		"bundle": "esbuild packages/cli/src/cli.ts --bundle --platform=node --format=esm --external:sharp --outfile=fairygui-tools.mjs",
+		"test": "pnpm build && ava",
+		"test:debug": "pnpm build && ava debug",
+		"coverage": "pnpm build && c8 --check-coverage --lines=90 --functions=90 --branches=75 --statements=90 --reporter=lcov --reporter=text-summary ava",
+		"docs:api": "typedoc",
+		"docs:build": "pnpm docs:api && vitepress build docs",
+		"docs:dev": "pnpm docs:api && vitepress dev docs",
+		"docs:preview": "vitepress preview docs",
+		"lint:ci": "biome ci packages scripts examples docs/.vitepress/config.ts docs/.vitepress/theme",
+		"format": "biome format --write packages scripts examples docs/.vitepress/config.ts docs/.vitepress/theme",
+		"format:check": "biome format packages scripts examples docs/.vitepress/config.ts docs/.vitepress/theme",
+		"typecheck": "node node_modules/@typescript/native/bin/tsc --noEmit --declaration false",
+		"release:prepare": "node scripts/prepare-release.mjs"
 	},
 	"devDependencies": {
 		"@biomejs/biome": "^2.4.9",
 		"@types/node": "^22.0.0",
+		"@typescript/native": "npm:typescript@^7.0.2",
 		"ava": "^7.0.0",
 		"c8": "^11.0.0",
-		"lerna": "^8.2.0",
+		"esbuild": "^0.27.7",
+		"mermaid": "11.16.0",
+		"sharp": "^0.34.5",
 		"tsdown": "^0.21.5",
 		"tsx": "^4.21.0",
-		"typescript": "^5.9.0"
+		"typedoc": "^0.28.20",
+		"typescript": "npm:@typescript/typescript6@^6.0.2",
+		"vitepress": "^1.6.4",
+		"vitepress-plugin-mermaid": "2.0.17"
 	},
 	"ava": {
 		"extensions": {
@@ -47,17 +80,29 @@
 		],
 		"files": [
 			"packages/*/test/**/*.test.ts"
-		]
+		],
+		"workerThreads": false,
+		"concurrency": 4
 	},
 	"packageManager": "pnpm@10.14.0",
-	"dependencies": {
-		"sharp": "^0.34.5"
-	},
 	"pnpm": {
 		"onlyBuiltDependencies": [
 			"esbuild",
-			"nx",
 			"sharp"
 		]
+	},
+	"c8": {
+		"all": true,
+		"include": [
+			"packages/*/src/**/*.ts"
+		],
+		"exclude": [
+			"packages/*/src/generated/**"
+		]
+	},
+	"toolchain": {
+		"typecheck": "@typescript/native (TypeScript 7), invoked by explicit path to avoid the shared tsc binary.",
+		"compilerApi": "typescript (TypeScript 6 alias), used by TypeDoc and contract generation; TS7 does not provide the stable compiler API.",
+		"consumerTypes": "TypeScript 6, strict NodeNext ESM/CJS; TypeScript 5 is not a claimed consumer target."
 	}
 }

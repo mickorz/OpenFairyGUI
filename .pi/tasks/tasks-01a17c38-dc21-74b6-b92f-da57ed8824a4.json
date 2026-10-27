@@ -1,0 +1,77 @@
+{
+  "nextId": 7,
+  "tasks": [
+    {
+      "id": "1",
+      "subject": "重新发起 merge 并分类 255 个冲突",
+      "description": "git merge upstream/main，把冲突分为 modify/delete 类和 content 类，统计每类规模，确定逐批解决顺序",
+      "status": "completed",
+      "activeForm": "分类冲突文件",
+      "metadata": {},
+      "blocks": [],
+      "blockedBy": [],
+      "createdAt": 1793085724888,
+      "updatedAt": 1793085843045
+    },
+    {
+      "id": "2",
+      "subject": "解决文档与配置类冲突",
+      "description": "docs/、README*、CHANGELOG*、.github/workflows、.gitignore、package.json、tsconfig.json、pnpm-lock.yaml、tsdown.config 等。策略：以上游为基础，保留 fork 特有内容（bundle 脚本、test-utils devDep、fork 自己的文档说明）",
+      "status": "completed",
+      "activeForm": "解决文档与配置冲突",
+      "metadata": {},
+      "blocks": [],
+      "blockedBy": [],
+      "createdAt": 1793085724892,
+      "updatedAt": 1793085989475
+    },
+    {
+      "id": "3",
+      "subject": "解决 core 包源码冲突",
+      "description": "packages/core/src/io、properties、uam 等。策略：以上游 v0.7.0 重构后的结构为基础，把 fork 的修复（pivot/scale/skew 支持、size 继承、编码精度等）重新应用上去",
+      "status": "completed",
+      "activeForm": "解决 core 包冲突",
+      "metadata": {},
+      "blocks": [],
+      "blockedBy": [],
+      "createdAt": 1793085724896,
+      "updatedAt": 1793086712033
+    },
+    {
+      "id": "4",
+      "subject": "解决 backend/cli/functions/mcp/test-utils 包冲突",
+      "description": "其余 packages/ 下的冲突。mcp 包 fork 曾删除、上游还在演进，需确认 fork 是否还需要 mcp 包；functions/restore 是 fork 重点修改区，需仔细融合",
+      "status": "completed",
+      "activeForm": "解决其余包冲突",
+      "metadata": {},
+      "blocks": [],
+      "blockedBy": [],
+      "createdAt": 1793085724900,
+      "updatedAt": 1793087357195
+    },
+    {
+      "id": "5",
+      "subject": "构建与测试验证合并结果",
+      "description": "pnpm install、全仓 build、跑测试套件，确认 fork 的关键功能（restore/pivot/i18n/--no-atlas）在合并后仍然工作",
+      "status": "completed",
+      "activeForm": "构建与测试验证",
+      "metadata": {},
+      "blocks": [],
+      "blockedBy": [],
+      "createdAt": 1793085724903,
+      "updatedAt": 1793090838359
+    },
+    {
+      "id": "6",
+      "subject": "提交合并并推送 fork",
+      "description": "完成 merge commit，推送到 origin/main，同步更新 fairycli 父项目的 submodule 指针",
+      "status": "in_progress",
+      "activeForm": "提交合并",
+      "metadata": {},
+      "blocks": [],
+      "blockedBy": [],
+      "createdAt": 1793085724907,
+      "updatedAt": 1793090838371
+    }
+  ]
+}

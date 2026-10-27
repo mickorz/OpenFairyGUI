@@ -18,17 +18,12 @@
  *     |     |-> completeTask(taskId, success)
  *     |-> 立即返回 { taskId }
  */
-import http from 'node:http';
+import type http from 'node:http';
 import path from 'node:path';
 import { publish, resolvePublishOptions } from '@openfairygui/functions';
 import { parseBody, jsonResponse, generateId } from '../router.js';
 import { createSSELogger, completeTask } from '../sse-manager.js';
-import {
-	resolveFairyPath,
-	parseProjectType,
-	createPublishFs,
-	createNodeIO,
-} from './shared.js';
+import { resolveFairyPath, parseProjectType, createPublishFs, createNodeIO } from './shared.js';
 
 interface PublishRequestBody {
 	inputPath: string;
@@ -61,8 +56,12 @@ export async function handlePublish(req: http.IncomingMessage, res: http.ServerR
 		const origError = console.error;
 
 		try {
-			console.warn = (msg: any) => { logger.warn(String(msg)); };
-			console.error = (msg: any) => { logger.error(String(msg)); };
+			console.warn = (msg: any) => {
+				logger.warn(String(msg));
+			};
+			console.error = (msg: any) => {
+				logger.error(String(msg));
+			};
 
 			const fairyPath = await resolveFairyPath(body.inputPath);
 			const projectDir = path.dirname(fairyPath);
@@ -80,7 +79,10 @@ export async function handlePublish(req: http.IncomingMessage, res: http.ServerR
 			}
 
 			const pkgFilter = body.packages
-				? body.packages.split(',').map((s) => s.trim()).filter(Boolean)
+				? body.packages
+						.split(',')
+						.map((s) => s.trim())
+						.filter(Boolean)
 				: undefined;
 			const maxAtlasSize = body.maxAtlasSize || undefined;
 
@@ -107,7 +109,7 @@ export async function handlePublish(req: http.IncomingMessage, res: http.ServerR
 			let encoder: import('@openfairygui/functions').PublishOptions['encoder'];
 			try {
 				const sharp = await import('sharp');
-				encoder = sharp.default ?? sharp;
+				encoder = (sharp.default ?? sharp) as unknown as typeof encoder;
 				logger.info('Sharp 已加载，将生成图集 PNG');
 			} catch {
 				logger.info('Sharp 不可用，图集 PNG 将不会生成');
@@ -115,18 +117,20 @@ export async function handlePublish(req: http.IncomingMessage, res: http.ServerR
 
 			const publishFs = createPublishFs();
 
-			await doc.transform(publish({
-				output: outputDir,
-				compressed: resolved.compressed,
-				fileExtension: resolved.fileExtension,
-				packages: resolved.packages,
-				fs: publishFs,
-				encoder,
-				basePath: path.join(projectDir, 'assets'),
-				atlas: atlasConfig,
-				branch: body.branch,
-				skipAtlas: body.noAtlas,
-			}));
+			await doc.transform(
+				publish({
+					output: outputDir,
+					compressed: resolved.compressed,
+					fileExtension: resolved.fileExtension,
+					packages: resolved.packages,
+					fs: publishFs,
+					encoder,
+					basePath: path.join(projectDir, 'assets'),
+					atlas: atlasConfig,
+					branch: body.branch,
+					skipAtlas: body.noAtlas,
+				}),
+			);
 
 			logger.info(`发布完成! 输出: ${outputDir}`);
 			completeTask(taskId, true);

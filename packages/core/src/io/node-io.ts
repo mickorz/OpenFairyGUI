@@ -1,7 +1,8 @@
+import { ProjectIOError } from './errors.js';
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 import { PlatformIO } from './platform-io.js';
-import type { FileSystem } from './project-reader.js';
+import type { FileSystem } from './file-system.js';
 
 /**
  * Node.js I/O implementation for reading and writing FairyGUI projects.
@@ -9,7 +10,7 @@ import type { FileSystem } from './project-reader.js';
  * Usage:
  *
  * ```ts
- * import { NodeIO } from '@openfairygui/core';
+ * import { NodeIO } from '@openfairygui/core/node';
  *
  * const io = new NodeIO();
  * const doc = await io.readProject('./path/to/project.fairy');
@@ -22,6 +23,7 @@ import type { FileSystem } from './project-reader.js';
 export class NodeIO extends PlatformIO {
 	protected createFileSystem(): FileSystem {
 		return {
+			resolvePath: (filePath) => fs.realpath(filePath),
 			async readFile(filePath: string): Promise<string> {
 				return fs.readFile(filePath, 'utf-8');
 			},
@@ -40,15 +42,31 @@ export class NodeIO extends PlatformIO {
 			},
 			async readdir(dirPath: string): Promise<string[]> {
 				const entries = await fs.readdir(dirPath, { withFileTypes: true });
-				return entries.filter((e) => e.isDirectory()).map((e) => e.name);
+				const symlink = entries.find((entry) => entry.isSymbolicLink());
+				if (symlink)
+					throw new ProjectIOError(
+						`Symbolic links are not supported in project directories: ${path.join(dirPath, symlink.name)}`,
+					);
+				return entries.filter((entry) => entry.isDirectory()).map((entry) => entry.name);
 			},
 			async exists(filePath: string): Promise<boolean> {
 				try {
 					await fs.access(filePath);
 					return true;
-				} catch {
-					return false;
+				} catch (error) {
+					if (
+						(error as NodeJS.ErrnoException).code === 'ENOENT' ||
+						(error as NodeJS.ErrnoException).code === 'ENOTDIR'
+					)
+						return false;
+					throw error;
 				}
+			},
+			async unlink(filePath: string): Promise<void> {
+				await fs.unlink(filePath);
+			},
+			async rmdir(dirPath: string): Promise<void> {
+				await fs.rmdir(dirPath);
 			},
 			join(...paths: string[]): string {
 				return path.join(...paths);

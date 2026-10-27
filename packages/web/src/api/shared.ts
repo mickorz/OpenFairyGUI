@@ -13,10 +13,8 @@
  *     |-> shared 工具函数
  *     |-> @openfairygui/core / @openfairygui/functions
  */
-import {
-	NodeIO,
-	ProjectType,
-} from '@openfairygui/core';
+import { ProjectType } from '@openfairygui/core';
+import { NodeIO } from '@openfairygui/core/node';
 import type {
 	PublishFileSystem,
 	RestoreFileSystem,
@@ -132,6 +130,9 @@ export function createNodeRestoreFs(): RestoreFileSystem {
 		async rm(targetPath: string, options?: { recursive?: boolean; force?: boolean }): Promise<void> {
 			await fs.rm(targetPath, { recursive: options?.recursive ?? false, force: options?.force ?? false });
 		},
+		async rename(from: string, to: string): Promise<void> {
+			await fs.rename(from, to);
+		},
 		join(...paths: string[]): string {
 			return path.join(...paths);
 		},
@@ -187,24 +188,25 @@ export async function createRestoreImageProcessors() {
 		});
 		if (input.rotated) image = image.rotate(90);
 		const { data, info } = await image.png().toBuffer({ resolveWithObject: true });
-		const needsOriginalCanvas = input.expectedWidth > 0 && input.expectedHeight > 0 && (
-			input.offsetX !== 0
-			|| input.offsetY !== 0
-			|| info.width !== input.expectedWidth
-			|| info.height !== input.expectedHeight
-		);
+		const needsOriginalCanvas =
+			input.expectedWidth > 0 &&
+			input.expectedHeight > 0 &&
+			(input.offsetX !== 0 ||
+				input.offsetY !== 0 ||
+				info.width !== input.expectedWidth ||
+				info.height !== input.expectedHeight);
 
 		if (needsOriginalCanvas) {
 			if (
-				input.offsetX < 0
-				|| input.offsetY < 0
-				|| input.offsetX + info.width > input.expectedWidth
-				|| input.offsetY + info.height > input.expectedHeight
+				input.offsetX < 0 ||
+				input.offsetY < 0 ||
+				input.offsetX + info.width > input.expectedWidth ||
+				input.offsetY + info.height > input.expectedHeight
 			) {
 				throw new Error(
-					`restore: 裁剪图片超出原始画布 ${targetPath}: `
-					+ `裁剪 ${info.width}x${info.height} 位于 ${input.offsetX},${input.offsetY}, `
-					+ `画布 ${input.expectedWidth}x${input.expectedHeight}`,
+					`restore: 裁剪图片超出原始画布 ${targetPath}: ` +
+						`裁剪 ${info.width}x${info.height} 位于 ${input.offsetX},${input.offsetY}, ` +
+						`画布 ${input.expectedWidth}x${input.expectedHeight}`,
 				);
 			}
 			const composed = await sharp({
@@ -219,26 +221,26 @@ export async function createRestoreImageProcessors() {
 				.png()
 				.toBuffer({ resolveWithObject: true });
 			if (
-				input.expectedWidth > 0
-				&& input.expectedHeight > 0
-				&& (composed.info.width !== input.expectedWidth || composed.info.height !== input.expectedHeight)
+				input.expectedWidth > 0 &&
+				input.expectedHeight > 0 &&
+				(composed.info.width !== input.expectedWidth || composed.info.height !== input.expectedHeight)
 			) {
 				throw new Error(
-					`restore: 裁剪图片尺寸不匹配 ${targetPath}: `
-					+ `期望 ${input.expectedWidth}x${input.expectedHeight}, 实际 ${composed.info.width}x${composed.info.height}`,
+					`restore: 裁剪图片尺寸不匹配 ${targetPath}: ` +
+						`期望 ${input.expectedWidth}x${input.expectedHeight}, 实际 ${composed.info.width}x${composed.info.height}`,
 				);
 			}
 			return composed.data;
 		}
 
 		if (
-			input.expectedWidth > 0
-			&& input.expectedHeight > 0
-			&& (info.width !== input.expectedWidth || info.height !== input.expectedHeight)
+			input.expectedWidth > 0 &&
+			input.expectedHeight > 0 &&
+			(info.width !== input.expectedWidth || info.height !== input.expectedHeight)
 		) {
 			throw new Error(
-				`restore: 裁剪图片尺寸不匹配 ${targetPath}: `
-				+ `期望 ${input.expectedWidth}x${input.expectedHeight}, 实际 ${info.width}x${info.height}`,
+				`restore: 裁剪图片尺寸不匹配 ${targetPath}: ` +
+					`期望 ${input.expectedWidth}x${input.expectedHeight}, 实际 ${info.width}x${info.height}`,
 			);
 		}
 		return data;

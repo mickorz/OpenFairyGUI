@@ -1,4 +1,4 @@
-import { XMLParser } from 'fast-xml-parser';
+import { XMLParser, XMLValidator } from 'fast-xml-parser';
 
 const defaultOptions = {
 	ignoreAttributes: false,
@@ -14,12 +14,35 @@ const defaultOptions = {
 };
 
 const ARRAY_TAGS = new Set([
-	'image', 'component', 'font', 'sound', 'movieclip', 'swf', 'atlas', 'misc',
-	'text', 'richtext', 'inputtext', 'graph', 'group', 'loader', 'list',
-	'controller', 'transition', 'item',
+	'image',
+	'component',
+	'font',
+	'sound',
+	'movieclip',
+	'swf',
+	'atlas',
+	'misc',
+	'text',
+	'richtext',
+	'inputtext',
+	'graph',
+	'group',
+	'loader',
+	'list',
+	'controller',
+	'transition',
+	'item',
 	'relation',
-	'gearDisplay', 'gearXY', 'gearSize', 'gearLook', 'gearColor',
-	'gearAni', 'gearText', 'gearIcon', 'gearDisplay2', 'gearFontSize',
+	'gearDisplay',
+	'gearXY',
+	'gearSize',
+	'gearLook',
+	'gearColor',
+	'gearAni',
+	'gearText',
+	'gearIcon',
+	'gearDisplay2',
+	'gearFontSize',
 	'action',
 ]);
 
@@ -28,6 +51,33 @@ const preserveOrderParser = new XMLParser({
 	...defaultOptions,
 	preserveOrder: true,
 });
+const rawPreserveOrderParser = new XMLParser({
+	...defaultOptions,
+	preserveOrder: true,
+	trimValues: false,
+});
+
+export function escapeXmlAttr(value: unknown): string {
+	return String(value)
+		.replace(/&/g, '&amp;')
+		.replace(/\r\n/g, '&#xA;')
+		.replace(/[\r\n]/g, '&#xA;')
+		.replace(/\t/g, '&#x9;')
+		.replace(/"/g, '&quot;')
+		.replace(/'/g, '&apos;')
+		.replace(/</g, '&lt;')
+		.replace(/>/g, '&gt;');
+}
+
+export function renderXmlAttrs(attrs: Record<string, unknown>): string {
+	const parts: string[] = [];
+	for (const [key, value] of Object.entries(attrs)) {
+		if (value === undefined || value === null || Array.isArray(value) || typeof value === 'object') continue;
+		const attrName = key.startsWith('@_') ? key.slice(2) : key;
+		parts.push(` ${attrName}="${escapeXmlAttr(value)}"`);
+	}
+	return parts.join('');
+}
 
 export function parseXML(xml: string): Record<string, unknown> {
 	return parser.parse(xml);
@@ -35,6 +85,10 @@ export function parseXML(xml: string): Record<string, unknown> {
 
 export function parseXMLPreserveOrder(xml: string): Array<Record<string, unknown>> {
 	return preserveOrderParser.parse(xml);
+}
+
+export function parseXMLPreserveOrderRaw(xml: string): Array<Record<string, unknown>> {
+	return rawPreserveOrderParser.parse(xml);
 }
 
 export function parseXYString(v: string | undefined): [number, number] {
@@ -69,12 +123,7 @@ export function parseControllerPages(pagesStr: string): Array<{ id: string; name
 export function parseMarginString(v: string | undefined): [number, number, number, number] {
 	if (!v) return [0, 0, 0, 0];
 	const parts = v.split(',');
-	return [
-		parseFloat(parts[0]) || 0,
-		parseFloat(parts[1]) || 0,
-		parseFloat(parts[2]) || 0,
-		parseFloat(parts[3]) || 0,
-	];
+	return [parseFloat(parts[0]) || 0, parseFloat(parts[1]) || 0, parseFloat(parts[2]) || 0, parseFloat(parts[3]) || 0];
 }
 
 export function parseBool(v: string | boolean | undefined): boolean {
@@ -99,19 +148,33 @@ export function parseInt2(v: string | number | undefined, defaultValue = 0): num
 }
 
 const RELATION_TYPE_MAP: Record<string, number> = {
-	'left-left': 0, 'left-center': 1, 'left-right': 2,
+	'left-left': 0,
+	'left-center': 1,
+	'left-right': 2,
 	'center-center': 3,
-	'right-left': 4, 'right-center': 5, 'right-right': 6,
-	'top-top': 7, 'top-middle': 8, 'top-bottom': 9,
+	'right-left': 4,
+	'right-center': 5,
+	'right-right': 6,
+	'top-top': 7,
+	'top-middle': 8,
+	'top-bottom': 9,
 	'middle-middle': 10,
-	'bottom-top': 11, 'bottom-middle': 12, 'bottom-bottom': 13,
-	'width-width': 14, 'height-height': 15,
+	'bottom-top': 11,
+	'bottom-middle': 12,
+	'bottom-bottom': 13,
+	'width-width': 14,
+	'height-height': 15,
 	// FairyGUI 编辑器使用的简写形式
-	'width': 14, 'height': 15,
-	'leftext-left': 16, 'leftext-right': 17,
-	'rightext-left': 18, 'rightext-right': 19,
-	'topext-top': 20, 'topext-bottom': 21,
-	'bottomext-top': 22, 'bottomext-bottom': 23,
+	width: 14,
+	height: 15,
+	'leftext-left': 16,
+	'leftext-right': 17,
+	'rightext-left': 18,
+	'rightext-right': 19,
+	'topext-top': 20,
+	'topext-bottom': 21,
+	'bottomext-top': 22,
+	'bottomext-bottom': 23,
 };
 
 export function parseSidePair(sidePair: string): Array<{ type: number; usePercent: boolean }> {
@@ -127,4 +190,15 @@ export function parseSidePair(sidePair: string): Array<{ type: number; usePercen
 export function ensureArray<T>(v: T | T[] | undefined): T[] {
 	if (v === undefined || v === null) return [];
 	return Array.isArray(v) ? v : [v];
+}
+
+export function assertWellFormedXml(content: string): void {
+	const result = XMLValidator.validate(content, { allowBooleanAttributes: true });
+	if (result !== true) throw new Error(result.err.msg);
+}
+
+export function getXmlNode<T extends Record<string, unknown>>(value: unknown): T | null {
+	const node = Array.isArray(value) ? value[0] : value;
+	if (!node || typeof node !== 'object' || Array.isArray(node)) return null;
+	return node as T;
 }

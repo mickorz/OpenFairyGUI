@@ -1,0 +1,81 @@
+import path from 'node:path';
+import { NodeIO } from '@openfairygui/core/node';
+import { resolvePublishOptions } from '@openfairygui/functions';
+import { publishNode } from '@openfairygui/functions/node';
+import type { Command } from 'commander';
+import { resolveFairyPath } from '../utils/project-input.js';
+import { parseProjectType } from '../utils/project-type.js';
+import { printJson } from '../utils/json-output.js';
+
+type PublishCommandOptions = {
+	output?: string;
+	compressed?: boolean;
+	packages?: string;
+	branch?: string;
+	projectType?: string;
+	atlas?: boolean;
+	json?: boolean;
+	plugins?: boolean;
+};
+
+export function registerPublishCommand(program: Command): void {
+	program
+		.command('publish')
+		.description('Publish project to binary outputs and configured generated code')
+		.argument('<project-dir>', 'Project root directory or .fairy file')
+		.option('--json', 'Print one JSON result or error (exit 0: success, 1: workflow failure, 2: invalid arguments)')
+		.option('-o, --output <dir>', 'Override project or package publish output directory')
+		.option('-c, --compressed', 'Compress binary data (overrides project setting)')
+		.option('-p, --packages <a,b,c>', 'Only publish specific packages (comma-separated)')
+		.option('--no-plugins', 'Disable project plugin discovery and execution')
+		.option('-b, --branch <name>', 'Active branch used by "主干合并活跃分支"; omit for main branch')
+		.option('--no-atlas', 'Skip atlas packing (only output binary, no atlas PNGs)')
+		.option(
+			'-t, --project-type <name|id>',
+			'Override project type (for example: unity, layabox, cocoscreator, 0, 4, 3)',
+		)
+		.action(async (projectDir: string, options: PublishCommandOptions) => {
+			const fairyPath = await resolveFairyPath(projectDir);
+			const projectRootDir = path.dirname(fairyPath);
+			const outputDir = options.output ? path.resolve(options.output) : undefined;
+
+			console.log(`Reading project: ${fairyPath}`);
+			const io = new NodeIO();
+			const doc = await io.readProject(fairyPath);
+			const projectType = parseProjectType(options.projectType);
+			if (projectType !== undefined) {
+				doc.getRoot().setProjectType(projectType);
+			}
+
+			const pkgFilter = options.packages?.split(',').map((value) => value.trim());
+			const resolved = resolvePublishOptions(doc, {
+				compressed: options.compressed,
+				packages: pkgFilter,
+				targetProjectType: projectType,
+			});
+
+			console.log(`Settings: ext=${resolved.fileExtension}, compressed=${resolved.compressed}`);
+			if (options.branch) {
+				console.log(`Active branch: ${options.branch}`);
+			}
+
+			const result = await publishNode({
+				document: doc,
+				output: outputDir,
+				compressed: resolved.compressed,
+				fileExtension: resolved.fileExtension,
+				packages: resolved.packages,
+				assetsPath: path.join(projectRootDir, 'assets'),
+				atlas: resolved.atlas,
+				branch: options.branch,
+				skipAtlas: options.atlas === false,
+				plugins: options.plugins === false ? [] : undefined,
+			});
+			if (options.json) {
+				printJson('publish', result);
+				return;
+			}
+
+			console.log(`\nDone!${outputDir ? ` Output override: ${outputDir}` : ''}`);
+		});
+}

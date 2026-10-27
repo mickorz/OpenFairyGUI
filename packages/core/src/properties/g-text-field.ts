@@ -6,6 +6,9 @@ export interface IGTextField extends IGObject {
 	y: number;
 	width: number;
 	height: number;
+	pivotX: number;
+	pivotY: number;
+	anchor: boolean;
 	minWidth: number;
 	maxWidth: number;
 	minHeight: number;
@@ -18,13 +21,6 @@ export interface IGTextField extends IGObject {
 	grayed: boolean;
 	tooltips: string;
 	customData: string;
-	pivotX: number;
-	pivotY: number;
-	anchor: boolean;
-	scaleX: number;
-	scaleY: number;
-	skewX: number;
-	skewY: number;
 	text: string;
 	font: string;
 	fontSize: number;
@@ -39,6 +35,7 @@ export interface IGTextField extends IGObject {
 	demoText: string;
 	templateVarsEnabled: boolean;
 	faceDilate: number;
+	outlineSoftness: number;
 	underlaySoftness: number;
 	ubbEnabled: boolean;
 	underline: boolean;
@@ -79,6 +76,9 @@ export class GTextField<
 			y: 0,
 			width: 0,
 			height: 0,
+			pivotX: 0,
+			pivotY: 0,
+			anchor: false,
 			minWidth: 0,
 			maxWidth: 0,
 			minHeight: 0,
@@ -91,13 +91,6 @@ export class GTextField<
 			grayed: false,
 			tooltips: '',
 			customData: '',
-			pivotX: 0,
-			pivotY: 0,
-			anchor: false,
-			scaleX: 1,
-			scaleY: 1,
-			skewX: 0,
-			skewY: 0,
 			text: '',
 			font: '',
 			fontSize: 12,
@@ -112,6 +105,7 @@ export class GTextField<
 			demoText: '',
 			templateVarsEnabled: false,
 			faceDilate: 0,
+			outlineSoftness: 0,
 			underlaySoftness: 0,
 			ubbEnabled: false,
 			underline: false,
@@ -138,17 +132,37 @@ export class GTextField<
 		return self.set(key as never, value as never) as this;
 	}
 
-	public getText(): string { return this.getTextFieldProp('text'); }
-	public setText(v: string): this { return this.setTextFieldProp('text', v); }
+	public getText(): string {
+		return this.getTextFieldProp('text');
+	}
+	public setText(v: string): this {
+		return this.setTextFieldProp('text', v);
+	}
 
-	public getX(): number { return this.getTextFieldProp('x'); }
-	public getY(): number { return this.getTextFieldProp('y'); }
-	public getWidth(): number { return this.getTextFieldProp('width'); }
-	public getHeight(): number { return this.getTextFieldProp('height'); }
-	public getMinWidth(): number { return this.getTextFieldProp('minWidth'); }
-	public getMaxWidth(): number { return this.getTextFieldProp('maxWidth'); }
-	public getMinHeight(): number { return this.getTextFieldProp('minHeight'); }
-	public getMaxHeight(): number { return this.getTextFieldProp('maxHeight'); }
+	public getX(): number {
+		return this.getTextFieldProp('x');
+	}
+	public getY(): number {
+		return this.getTextFieldProp('y');
+	}
+	public getWidth(): number {
+		return this.getTextFieldProp('width');
+	}
+	public getHeight(): number {
+		return this.getTextFieldProp('height');
+	}
+	public getMinWidth(): number {
+		return this.getTextFieldProp('minWidth');
+	}
+	public getMaxWidth(): number {
+		return this.getTextFieldProp('maxWidth');
+	}
+	public getMinHeight(): number {
+		return this.getTextFieldProp('minHeight');
+	}
+	public getMaxHeight(): number {
+		return this.getTextFieldProp('maxHeight');
+	}
 	public setXY(x: number, y: number): this {
 		this.setTextFieldProp('x', x);
 		return this.setTextFieldProp('y', y);
@@ -157,124 +171,273 @@ export class GTextField<
 		this.setTextFieldProp('width', w);
 		return this.setTextFieldProp('height', h);
 	}
-	public setMinWidth(v: number): this { return this.setTextFieldProp('minWidth', v); }
-	public setMaxWidth(v: number): this { return this.setTextFieldProp('maxWidth', v); }
-	public setMinHeight(v: number): this { return this.setTextFieldProp('minHeight', v); }
-	public setMaxHeight(v: number): this { return this.setTextFieldProp('maxHeight', v); }
-	public setX(v: number): this { return this.setTextFieldProp('x', v); }
-	public setY(v: number): this { return this.setTextFieldProp('y', v); }
+	public setMinWidth(v: number): this {
+		return this.setTextFieldProp('minWidth', v);
+	}
+	public setMaxWidth(v: number): this {
+		return this.setTextFieldProp('maxWidth', v);
+	}
+	public setMinHeight(v: number): this {
+		return this.setTextFieldProp('minHeight', v);
+	}
+	public setMaxHeight(v: number): this {
+		return this.setTextFieldProp('maxHeight', v);
+	}
+	public setX(v: number): this {
+		return this.setTextFieldProp('x', v);
+	}
+	public setY(v: number): this {
+		return this.setTextFieldProp('y', v);
+	}
 
-	public getPivotX(): number { return this.getTextFieldProp('pivotX'); }
-	public getPivotY(): number { return this.getTextFieldProp('pivotY'); }
-	public getPivotAsAnchor(): boolean { return this.getTextFieldProp('anchor'); }
+	public getPivotX(): number {
+		return this.getTextFieldProp('pivotX');
+	}
+	public getPivotY(): number {
+		return this.getTextFieldProp('pivotY');
+	}
+	public getPivotAsAnchor(): boolean {
+		return this.getTextFieldProp('anchor');
+	}
 	public setPivot(x: number, y: number, anchor = false): this {
 		this.setTextFieldProp('pivotX', x);
 		this.setTextFieldProp('pivotY', y);
 		return this.setTextFieldProp('anchor', anchor);
 	}
-	public getScaleX(): number { return this.getTextFieldProp('scaleX'); }
-	public getScaleY(): number { return this.getTextFieldProp('scaleY'); }
-	public setScale(x: number, y: number): this {
-		this.setTextFieldProp('scaleX', x);
-		return this.setTextFieldProp('scaleY', y);
+	public setPivotAsAnchor(v: boolean): this {
+		return this.setTextFieldProp('anchor', v);
 	}
-	public setPivotAsAnchor(v: boolean): this { return this.setTextFieldProp('anchor', v); }
 
-	public getGroup(): string { return this.getTextFieldProp('group'); }
-	public setGroup(v: string): this { return this.setTextFieldProp('group', v); }
+	public getGroup(): string {
+		return this.getTextFieldProp('group');
+	}
+	public setGroup(v: string): this {
+		return this.setTextFieldProp('group', v);
+	}
 
-	public getAlpha(): number { return this.getTextFieldProp('alpha'); }
-	public setAlpha(v: number): this { return this.setTextFieldProp('alpha', v); }
+	public getAlpha(): number {
+		return this.getTextFieldProp('alpha');
+	}
+	public setAlpha(v: number): this {
+		return this.setTextFieldProp('alpha', v);
+	}
 
-	public getRotation(): number { return this.getTextFieldProp('rotation'); }
-	public setRotation(v: number): this { return this.setTextFieldProp('rotation', v); }
+	public getRotation(): number {
+		return this.getTextFieldProp('rotation');
+	}
+	public setRotation(v: number): this {
+		return this.setTextFieldProp('rotation', v);
+	}
 
-	public getVisible(): boolean { return this.getTextFieldProp('visible'); }
-	public setVisible(v: boolean): this { return this.setTextFieldProp('visible', v); }
+	public getVisible(): boolean {
+		return this.getTextFieldProp('visible');
+	}
+	public setVisible(v: boolean): this {
+		return this.setTextFieldProp('visible', v);
+	}
 
-	public getTouchable(): boolean { return this.getTextFieldProp('touchable'); }
-	public setTouchable(v: boolean): this { return this.setTextFieldProp('touchable', v); }
+	public getTouchable(): boolean {
+		return this.getTextFieldProp('touchable');
+	}
+	public setTouchable(v: boolean): this {
+		return this.setTextFieldProp('touchable', v);
+	}
 
-	public getGrayed(): boolean { return this.getTextFieldProp('grayed'); }
-	public setGrayed(v: boolean): this { return this.setTextFieldProp('grayed', v); }
+	public getGrayed(): boolean {
+		return this.getTextFieldProp('grayed');
+	}
+	public setGrayed(v: boolean): this {
+		return this.setTextFieldProp('grayed', v);
+	}
 
-	public getTooltips(): string { return this.getTextFieldProp('tooltips'); }
-	public setTooltips(v: string): this { return this.setTextFieldProp('tooltips', v); }
+	public getTooltips(): string {
+		return this.getTextFieldProp('tooltips');
+	}
+	public setTooltips(v: string): this {
+		return this.setTextFieldProp('tooltips', v);
+	}
 
-	public getCustomData(): string { return this.getTextFieldProp('customData'); }
-	public setCustomData(v: string): this { return this.setTextFieldProp('customData', v); }
+	public getCustomData(): string {
+		return this.getTextFieldProp('customData');
+	}
+	public setCustomData(v: string): this {
+		return this.setTextFieldProp('customData', v);
+	}
 
-	public getFont(): string { return this.getTextFieldProp('font'); }
-	public setFont(v: string): this { return this.setTextFieldProp('font', v); }
+	public getFont(): string {
+		return this.getTextFieldProp('font');
+	}
+	public setFont(v: string): this {
+		return this.setTextFieldProp('font', v);
+	}
 
-	public getFontSize(): number { return this.getTextFieldProp('fontSize'); }
-	public setFontSize(v: number): this { return this.setTextFieldProp('fontSize', v); }
+	public getFontSize(): number {
+		return this.getTextFieldProp('fontSize');
+	}
+	public setFontSize(v: number): this {
+		return this.setTextFieldProp('fontSize', v);
+	}
 
-	public getColor(): string { return this.getTextFieldProp('color'); }
-	public setColor(v: string): this { return this.setTextFieldProp('color', v); }
+	public getColor(): string {
+		return this.getTextFieldProp('color');
+	}
+	public setColor(v: string): this {
+		return this.setTextFieldProp('color', v);
+	}
 
-	public getAlign(): number { return this.getTextFieldProp('align'); }
-	public setAlign(v: number): this { return this.setTextFieldProp('align', v); }
+	public getAlign(): number {
+		return this.getTextFieldProp('align');
+	}
+	public setAlign(v: number): this {
+		return this.setTextFieldProp('align', v);
+	}
 
-	public getVAlign(): number { return this.getTextFieldProp('vAlign'); }
-	public setVAlign(v: number): this { return this.setTextFieldProp('vAlign', v); }
+	public getVAlign(): number {
+		return this.getTextFieldProp('vAlign');
+	}
+	public setVAlign(v: number): this {
+		return this.setTextFieldProp('vAlign', v);
+	}
 
-	public getLeading(): number { return this.getTextFieldProp('leading'); }
-	public setLeading(v: number): this { return this.setTextFieldProp('leading', v); }
+	public getLeading(): number {
+		return this.getTextFieldProp('leading');
+	}
+	public setLeading(v: number): this {
+		return this.setTextFieldProp('leading', v);
+	}
 
-	public getLetterSpacing(): number { return this.getTextFieldProp('letterSpacing'); }
-	public setLetterSpacing(v: number): this { return this.setTextFieldProp('letterSpacing', v); }
+	public getLetterSpacing(): number {
+		return this.getTextFieldProp('letterSpacing');
+	}
+	public setLetterSpacing(v: number): this {
+		return this.setTextFieldProp('letterSpacing', v);
+	}
 
-	public getAutoSize(): number { return this.getTextFieldProp('autoSize'); }
-	public setAutoSize(v: number): this { return this.setTextFieldProp('autoSize', v); }
+	public getAutoSize(): number {
+		return this.getTextFieldProp('autoSize');
+	}
+	public setAutoSize(v: number): this {
+		return this.setTextFieldProp('autoSize', v);
+	}
 
-	public getSingleLine(): boolean { return this.getTextFieldProp('singleLine'); }
-	public setSingleLine(v: boolean): this { return this.setTextFieldProp('singleLine', v); }
+	public getSingleLine(): boolean {
+		return this.getTextFieldProp('singleLine');
+	}
+	public setSingleLine(v: boolean): this {
+		return this.setTextFieldProp('singleLine', v);
+	}
 
-	public getAutoClearText(): boolean { return this.getTextFieldProp('autoClearText'); }
-	public setAutoClearText(v: boolean): this { return this.setTextFieldProp('autoClearText', v); }
+	public getAutoClearText(): boolean {
+		return this.getTextFieldProp('autoClearText');
+	}
+	public setAutoClearText(v: boolean): this {
+		return this.setTextFieldProp('autoClearText', v);
+	}
 
-	public getDemoText(): string { return this.getTextFieldProp('demoText'); }
-	public setDemoText(v: string): this { return this.setTextFieldProp('demoText', v); }
+	public getDemoText(): string {
+		return this.getTextFieldProp('demoText');
+	}
+	public setDemoText(v: string): this {
+		return this.setTextFieldProp('demoText', v);
+	}
 
-	public getTemplateVarsEnabled(): boolean { return this.getTextFieldProp('templateVarsEnabled'); }
-	public setTemplateVarsEnabled(v: boolean): this { return this.setTextFieldProp('templateVarsEnabled', v); }
+	public getTemplateVarsEnabled(): boolean {
+		return this.getTextFieldProp('templateVarsEnabled');
+	}
+	public setTemplateVarsEnabled(v: boolean): this {
+		return this.setTextFieldProp('templateVarsEnabled', v);
+	}
 
-	public getFaceDilate(): number { return this.getTextFieldProp('faceDilate'); }
-	public setFaceDilate(v: number): this { return this.setTextFieldProp('faceDilate', v); }
+	public getFaceDilate(): number {
+		return this.getTextFieldProp('faceDilate');
+	}
+	public setFaceDilate(v: number): this {
+		return this.setTextFieldProp('faceDilate', v);
+	}
 
-	public getUnderlaySoftness(): number { return this.getTextFieldProp('underlaySoftness'); }
-	public setUnderlaySoftness(v: number): this { return this.setTextFieldProp('underlaySoftness', v); }
+	public getOutlineSoftness(): number {
+		return this.getTextFieldProp('outlineSoftness');
+	}
+	public setOutlineSoftness(v: number): this {
+		return this.setTextFieldProp('outlineSoftness', v);
+	}
 
-	public getUbbEnabled(): boolean { return this.getTextFieldProp('ubbEnabled'); }
-	public setUbbEnabled(v: boolean): this { return this.setTextFieldProp('ubbEnabled', v); }
+	public getUnderlaySoftness(): number {
+		return this.getTextFieldProp('underlaySoftness');
+	}
+	public setUnderlaySoftness(v: number): this {
+		return this.setTextFieldProp('underlaySoftness', v);
+	}
 
-	public getUnderline(): boolean { return this.getTextFieldProp('underline'); }
-	public setUnderline(v: boolean): this { return this.setTextFieldProp('underline', v); }
+	public getUbbEnabled(): boolean {
+		return this.getTextFieldProp('ubbEnabled');
+	}
+	public setUbbEnabled(v: boolean): this {
+		return this.setTextFieldProp('ubbEnabled', v);
+	}
 
-	public getItalic(): boolean { return this.getTextFieldProp('italic'); }
-	public setItalic(v: boolean): this { return this.setTextFieldProp('italic', v); }
+	public getUnderline(): boolean {
+		return this.getTextFieldProp('underline');
+	}
+	public setUnderline(v: boolean): this {
+		return this.setTextFieldProp('underline', v);
+	}
 
-	public getBold(): boolean { return this.getTextFieldProp('bold'); }
-	public setBold(v: boolean): this { return this.setTextFieldProp('bold', v); }
+	public getItalic(): boolean {
+		return this.getTextFieldProp('italic');
+	}
+	public setItalic(v: boolean): this {
+		return this.setTextFieldProp('italic', v);
+	}
 
-	public getStrikethrough(): boolean { return this.getTextFieldProp('strikethrough'); }
-	public setStrikethrough(v: boolean): this { return this.setTextFieldProp('strikethrough', v); }
+	public getBold(): boolean {
+		return this.getTextFieldProp('bold');
+	}
+	public setBold(v: boolean): this {
+		return this.setTextFieldProp('bold', v);
+	}
 
-	public getStrokeColor(): string | null { return this.getTextFieldProp('outlineColor'); }
-	public setStrokeColor(v: string | null): this { return this.setTextFieldProp('outlineColor', v); }
+	public getStrikethrough(): boolean {
+		return this.getTextFieldProp('strikethrough');
+	}
+	public setStrikethrough(v: boolean): this {
+		return this.setTextFieldProp('strikethrough', v);
+	}
 
-	public getStrokeSize(): number { return this.getTextFieldProp('outlineSize'); }
-	public setStrokeSize(v: number): this { return this.setTextFieldProp('outlineSize', v); }
+	public getStrokeColor(): string | null {
+		return this.getTextFieldProp('outlineColor');
+	}
+	public setStrokeColor(v: string | null): this {
+		return this.setTextFieldProp('outlineColor', v);
+	}
 
-	public getShadowColor(): string | null { return this.getTextFieldProp('shadowColor'); }
-	public setShadowColor(v: string | null): this { return this.setTextFieldProp('shadowColor', v); }
+	public getStrokeSize(): number {
+		return this.getTextFieldProp('outlineSize');
+	}
+	public setStrokeSize(v: number): this {
+		return this.setTextFieldProp('outlineSize', v);
+	}
 
-	public getShadowOffsetX(): number { return this.getTextFieldProp('shadowOffsetX'); }
-	public setShadowOffsetX(v: number): this { return this.setTextFieldProp('shadowOffsetX', v); }
+	public getShadowColor(): string | null {
+		return this.getTextFieldProp('shadowColor');
+	}
+	public setShadowColor(v: string | null): this {
+		return this.setTextFieldProp('shadowColor', v);
+	}
 
-	public getShadowOffsetY(): number { return this.getTextFieldProp('shadowOffsetY'); }
-	public setShadowOffsetY(v: number): this { return this.setTextFieldProp('shadowOffsetY', v); }
+	public getShadowOffsetX(): number {
+		return this.getTextFieldProp('shadowOffsetX');
+	}
+	public setShadowOffsetX(v: number): this {
+		return this.setTextFieldProp('shadowOffsetX', v);
+	}
+
+	public getShadowOffsetY(): number {
+		return this.getTextFieldProp('shadowOffsetY');
+	}
+	public setShadowOffsetY(v: number): this {
+		return this.setTextFieldProp('shadowOffsetY', v);
+	}
 
 	public getShadowOffset(): ShadowOffsetLike {
 		return {

@@ -1,215 +1,45 @@
-# OpenFairyGUI 架构图说明
+# OpenFairyGUI 架构总览
 
-## 结论
+UAM 是公开的声明式创作契约；Document / Property Graph 是 Core 的内部物化与协议适配模型。导入工程时，原文件及读取诊断决定完整性；查询、预演、保存和发布是不同能力。
 
-当前仓库更适合理解成五段式结构：`输入源 -> 协议适配 -> 领域模型 -> 工作流 -> 输出物`。  
-其中真正稳定的中心层是 `Document + Property Graph`，CLI 和 publish 都只是围绕这层做编排。
-
-```mermaid
-flowchart LR
-    subgraph IN["输入源"]
-        PROJ["FairyGUI 工程目录<br/>.fairy / settings / package.xml / component.xml"]
-        PACK["发布包文件<br/>.fui / .bin / _fui.bytes"]
-    end
-
-    subgraph IO["协议适配与 I/O"]
-        FS["PlatformIO / NodeIO"]
-        PR["ProjectReader"]
-        BR["BinaryReader"]
-        PW["ProjectWriter"]
-        BW["BinaryWriter"]
-    end
-
-    subgraph DOMAIN["核心领域模型"]
-        DOC["Document"]
-        ROOT["Root / Package"]
-        RES["Resource 集合"]
-        COMP["Component 语义结构"]
-        UI["DisplayList / Controller / Transition / Gear"]
-    end
-
-    subgraph WF["工作流能力"]
-        OPS["inspect / validate / prune / rename"]
-        PUB["publish"]
-        RST["restore"]
-        ATLAS["atlas"]
-        CG["codegen"]
-    end
-
-    subgraph OUT["输出物"]
-        PROJOUT["工程文件写回<br/>.fairy + settings + assets/*"]
-        BIN["发布包<br/>.fui / .bin / _fui.bytes"]
-        ART["发布附属资源<br/>atlas*.png / sounds / 其他文件"]
-        CODEOUT["生成代码<br/>binder / component classes"]
-    end
-
-    PROJ --> FS --> PR --> DOC
-    PACK --> FS --> BR --> DOC
-    PACK --> RST
-    ART --> RST
-    RST --> DOC
-
-    DOC --> ROOT --> RES --> COMP --> UI
-    DOC --> OPS
-    DOC --> PUB
-    DOC --> RST
-    PUB --> ATLAS
-    PUB --> BW
-    PUB --> CG
-    RST --> BR
-    RST --> PW
-
-    DOC --> PW
-    PW --> PROJOUT
-    BW --> BIN
-    ATLAS --> ART
-    CG --> CODEOUT
-```
-
-## 关键细节
-
-| 层级 | 当前职责 | 核心文件 |
-|---|---|---|
-| 入口层 | 命令行封装与参数分发 | `packages/cli/src/cli.ts` |
-| 协议适配层 | 屏蔽平台文件系统差异，承接工程格式、二进制格式与工程 XML 协议元数据 | `packages/core/src/io/platform-io.ts`、`packages/core/src/io/node-io.ts`、`packages/core/src/io/project-xml-protocol.ts`、`packages/core/src/io/project-reader.ts`、`packages/core/src/io/binary-reader.ts`、`packages/core/src/io/component-decoder.ts` |
-| 核心模型层 | `Document` 持有 `Property Graph`，统一组织项目节点、资源节点与组件语义对象 | `packages/core/src/document.ts`、`packages/core/src/properties/property.ts` |
-| 项目骨架层 | `Root -> Package -> Resource -> Component` 组成基础结构 | `packages/core/src/properties/root.ts`、`packages/core/src/properties/package.ts`、`packages/core/src/properties/component.ts` |
-| 工作流层 | 面向自动化的可组合处理管线 | `packages/functions/src/inspect.ts`、`packages/functions/src/validate.ts`、`packages/functions/src/prune.ts`、`packages/functions/src/rename.ts`、`packages/functions/src/publish.ts`、`packages/functions/src/restore.ts`、`packages/functions/src/codegen.ts` |
-| 输出层 | 工程文件写回、图集产物生成、二进制封包输出与代码生成输出 | `packages/core/src/io/project-writer.ts`、`packages/functions/src/atlas.ts`、`packages/core/src/io/binary-writer.ts`、`packages/functions/src/codegen.ts` |
-
-补充说明：
-- `@openfairygui/core` 定义文档模型与协议读写能力。
-- `BinaryReader` 仍然是二进制读入口；component block 的展开逻辑当前拆到内部 helper `component-decoder.ts`，对外调用面不变。
-- `@openfairygui/functions` 只组合流程，不重新定义底层协议；当前 `publish` 与 `restore` 都在这里编排高层 workflow，并组合 `core` primitives。
-- 当前 Unity、Layabox、Cocos Creator 共用同一条 `publish -> atlas / binary / codegen` 主链；差异主要体现在描述文件扩展名和代码生成 lane 选择，而不是工作流分叉。
-- `@openfairygui/cli` 是入口层，不下沉协议细节。
-
-## 当前工程 XML 协议元数据结构
-
-`packages/core/src/io/project-xml-protocol.ts` 当前已经把工程 XML 协议拆成三层元数据：
-
-| 层 | 作用 | 当前典型节点 |
-|---|---|---|
-| `attrs` | 描述节点自身允许的 XML 属性，统一 canonical 名与 aliases | `componentRoot.attrs`、`componentInstance.attrs`、`image.attrs`、`packageImageResource.attrs` |
-| `children` | 描述稳定命名子节点集合，用于 `relation`、`gear*`、`action`、`item`、扩展子节点等结构 | `componentInstance.children`、`controller.children`、`transition.children`、`comboBoxExtension.children` |
-| `containers` | 描述容器型结构，而不是普通 child map；当前用于表达有序多态的 `displayList` | `componentRoot.containers.displayList` |
-
-当前三层结构的职责边界如下：
-
-| 元数据层 | 当前 reader / writer 使用方式 | 当前限制 |
-|---|---|---|
-| `attrs` | `ProjectReader / ProjectWriter` 已作为属性读写的主依据 | 不表达结构条件 |
-| `children` | 已参与稳定结构节点的读写与集合校验 | 目前是静态允许集合，不表达 `advanced=true`、`extention=...` 这类条件 |
-| `containers` | 当前已参与 `displayList` 变体集合校验 | 只表达允许的 variant 集合，不负责顺序算法，也不表达 `text -> inputtext`、`list -> tree` 这类条件归一来源 |
-
-`displayList` 当前在协议层的表达不是普通 `children.displayList`，而是容器元数据：
-
-| 项目 | 当前实现 |
+| 包 | 拥有的职责 |
 |---|---|
-| 容器宿主 | `componentRoot` |
-| 容器名 | `displayList` |
-| 容器类型 | `orderedVariants` |
-| 当前 variant 集合 | `image`、`graph`、`movieclip`、`jta`、`component`、`loader`、`loader3D`、`text`、`richtext`、`inputtext`、`group`、`list`、`tree` |
+| Core | 正式属性、UAM、selector、事务语义、XML/二进制读写及平台 I/O |
+| Functions | 无状态事务结果、验证、图集、发布和受限恢复工作流 |
+| Backend | 会话、锁、revision、存储协调及读取/创作/运行时服务；根入口 browser-safe |
+| CLI | 参数、退出码、JSON envelope；复用 Functions/Backend |
+| MCP | Backend 传输映射、预算、文档和 prompts；可选发布回调由宿主显式注入 |
+| test-utils | 测试辅助与固定提交的公开 fixture |
 
-其中：
+Node 能力从 /node 入口提供。Backend 入口在同一模块格式内共享运行时；ESM/CJS 是独立图，不承诺跨格式类身份。安装包分发构建入口、声明与离线文档；CLI 不内联私有依赖副本。
 
-- `attrs` 和 `children` 已经进入 `ProjectReader / ProjectWriter` 的正式消费路径。
-- `containers.displayList` 当前用于读写期的合法性校验，不直接替代现有 `displayList` 的顺序解析和序列化逻辑。
-- 当前正式属性协议总表见 [Project XML 属性协议](./project-xml-attribute-reference.md)。
-- `displayList` 的原始 XML tag、容器 variant 与 editor `DisplayListItem.type` 对齐口径，见 [Project XML DisplayList Tag 对齐](./project-xml-displaylist-variants.md)。
-
-## 当前工程 XML 资源层覆盖
-
-`ProjectReader / ProjectWriter` 当前对 `package.xml` 资源层的正式覆盖范围如下：
-
-| 节点 | 当前正式读写属性 |
-|---|---|
-| `packageDescription` 骨架 | `id` |
-| `branchDescription` 骨架 | 分支资源清单根节点 |
-| `packageDescription > publish` | `name`、`path`、`branchPath`、`packageCount`、`genCode`、`codePath`，以及子节点 `atlas@name/index` |
-| 通用资源节点 | `id`、`name`、`path`、`exported` |
-| `image` 资源 | `atlas`、`scale`、`scale9grid`、`width`、`height`、`gridTile`、`qualityOption`、`duplicatePadding`、`smoothing` |
-| `font` 资源 | `texture`、`renderMode`、`samplePointSize` |
-| `misc` 资源 | 无附加属性；资源文件名由通用 `name` 承载 |
-| `spine` 资源 | `width`、`height`、`require`、`atlasNames`、`anchor` |
-| `dragonbones` 资源 | `width`、`height`、`require`、`atlasNames`、`anchor` |
-
-其中 `image@atlas` 当前作为图片资源的纹理集模式字段读写，在正式模型中由 `ImageResource.textureSetMode` 承载。
-
-## 当前分支工程目录口径
-
-`ProjectReader / ProjectWriter` 当前已按编辑器目录结构处理资源分支：
-
-| 目录 / 文件 | 当前口径 |
-|---|---|
-| `assets/<包名>/package.xml` | 主分支资源清单 |
-| `assets_<branch>/<包名>/package_branch.xml` | 指定分支的资源清单 |
-| `Root.branches` | 当前工程已发现的分支名列表 |
-| 资源节点 `branch` | 分支资源通过正式资源字段区分，不再停留在临时 `extras` |
-
-## 当前发布附属资源口径
-
-`publish` 当前除二进制描述文件外，还会输出资源闭包内需要的附属文件。当前正式规则如下：
-
-| 资源类型 | 当前发布行为 |
-|---|---|
-| `SoundResource` | 输出发布后的声音文件名 |
-| `MiscResource` | 输出资源文件；若源文件扩展名为 `.atlas`，发布名改为 `.atlas.txt` |
-| `SpineResource` | 输出 skeleton 主文件；若源文件扩展名为 `.skel`，发布名改为 `.skel.bytes` |
-| `DragonBonesResource` | 输出 skeleton 主文件，当前保持原文件名 |
-| `SpineResource` / `DragonBonesResource` 依赖 | 按 `require` 形成资源闭包，依赖的 `misc` / `image` 资源一并发布 |
-
-## 当前分支发布口径
-
-`publish` 当前已区分两种分支发布语义：
-
-| 模式 | 当前实现 |
-|---|---|
-| `主干包含所有分支` | 保留包级 branch 表与主资源到分支资源的 item 映射，运行时可再切换分支 |
-| `主干合并活跃分支` | 先在发布期选出主干与活跃分支合并后的资源集合，再进行 atlas 与二进制描述文件写出；分支资源复用主资源 id，二进制不再写 branch 表 |
-
-当前 `publish` 在 `主干合并活跃分支` 模式下还会接受一个显式的活跃分支输入；未指定时视为发布主干。
-
-## 当前发布产物还原口径
-
-`restore` 当前作为 `functions` 层 workflow，面向发布目录，把发布二进制与同目录附属资源重建成一个可重读的 FairyGUI 工程目录。该链路不承诺还原原工程的编辑器设置或历史文件布局，只输出当前模型可表达的工程结构。
-
-| 输入 / 资源 | 当前还原行为 |
-|---|---|
-| `*_fui.bytes` / `.fui` | 批量读取到同一个 `Document`，按 package id 合并依赖占位包与真实包 |
-| `atlas*.png` | 由 `functions` 层 restore workflow 通过注入的图片裁切器按 sprite 映射裁切为碎图 PNG |
-| `SoundResource` / `MiscResource` / `SpineResource` / `DragonBonesResource` | 优先按发布文件名从发布目录复制，回退按工程资源文件名复制；当发布文件基名等于资源 id 且资源名可用时，输出文件名回写为工程侧资源名；Unity 发布名 `.atlas.txt` / `.skel.bytes` 会还原为工程侧 `.atlas` / `.skel` |
-| skeleton loose sidecar | 若发布目录存在 `.atlas.txt` / `.png` / `_tex.json` 等 sidecar，而二进制资源表未显式携带对应 `misc` / `image` 资源，restore workflow 会补建正式资源节点，并回填 `require` / `atlasNames`；当 `.skel.bytes` 资源能匹配到 Spine atlas sidecar 时，恢复结果按 `spine` 资源写回 |
-| 工程设置 | 初始化 Unity 发布默认值，不从发布包反推原编辑器设置 |
-| `packageDescription > publish` | 按发布包中的 atlas 页重建默认 publish atlas 条目，用于表达包级发布图集 |
-| `SpineResource` / `DragonBonesResource` | 按同目录 `.atlas` / `.png` / `_tex.json` 资源推导 `require` 与 `atlasNames`；该推导只覆盖发布目录可见的依赖资源 |
-| `MovieClipResource` / `FontResource` | 恢复 `.jta`、`.fnt`、`.ttf` 资源引用名；基于发布包中的帧、字形与 sprite 映射重建 `.jta` / `.fnt` 文件；位图字体派生 image resource 按当前样本规则恢复 editor 风格文件名与虚拟路径；SDF 字体按文件名补默认 `renderMode` / `samplePointSize` |
-
-## 当前最关键的数据流
+## 数据流
 
 ```mermaid
 flowchart TD
-    A["工程目录输入"] --> B["ProjectReader"]
-    X["二进制包输入"] --> Y["BinaryReader"]
-    R["发布目录输入<br/>.fui/.bytes + atlas/sounds"] --> S["restore"]
-    B --> C["Document"]
-    Y --> C
-    S --> C
-    C --> D["结构检查与整理<br/>inspect / validate / prune / rename"]
-    C --> E["发布编排<br/>publish"]
-    C --> F["工程写回<br/>ProjectWriter"]
-    E --> G["图集布局与合图<br/>atlas"]
-    E --> H["二进制写出<br/>BinaryWriter"]
-    F --> I["FairyGUI 工程输出"]
-    G --> J["atlas PNG / 附属资源"]
-    H --> K[".fui / .bin / _fui.bytes"]
+    XML[工程文件] --> Reader[Core Reader] --> Document[Document / Property Graph]
+    Binary[可信二进制] --> Reader
+    Document <-->|lift / materialize| UAM[UAM]
+    Client[CLI / MCP / SDK] --> Session[Backend 会话与 revision]
+    Session --> Functions[Functions authoring] --> Transaction[Core transaction]
+    Transaction --> UAM
+    Session -->|save| Writer[Core Writer] --> XML
+    UAM --> Host[Node / Web 发布宿主] --> Publish[Functions publish] --> Artifacts[发布物]
+    Client -->|显式宿主发布| Host
 ```
 
-## 模块边界
+事务在私有工作副本上执行，失败不提交；预演执行后丢弃，不预留 revision。Backend 对会话操作排他调度，apply/save 各自核对 revision。只读完整模型不包含主资源字节，字节通过独立 revision 绑定接口读取。
 
-| 模块 | 负责内容 | 不负责内容 |
-|---|---|---|
-| `@openfairygui/core` | 文档模型、属性节点、项目格式读写、二进制协议读写等底层能力 | 发布/还原策略、命令行参数封装 |
-| `@openfairygui/functions` | inspect / validate / prune / rename / atlas / publish / restore 等流程组合 | 协议定义、Property Graph 基础建模 |
-| `@openfairygui/cli` | 命令入口、参数解析、调用装配 | 领域模型定义、协议定义 |
-| `@openfairygui/test-utils` | 测试辅助与夹具支持 | 生产协议与运行时流程 |
+工程读取、UAM 检查和宿主源数据解码分层；invalid 是确定错误，incomplete 是能力或数据不足。保存仅处理工程拥有的文件，使用暂存、身份复核和回滚，保留不相关根目录内容；清理失败报告备份位置。路径授权、真实文件身份和锁归 Backend/宿主，MCP 注解不是授权。
+
+发布由 Functions 的 Node/Web 宿主执行。MCP 默认不开启发布；显式注入的 publish 回调拥有路径授权、输出范围与插件策略，不改变 Backend 方法集合。CLI tx 每次打开新会话，在同一锁内预演、提交、验证、保存并关闭；跨进程预演不保留会话 revision。
+
+事务预校验先由 `preflight/operation-shape.ts` 检查操作外形及 selector 字面量；外形表受正式事务类型约束。`payload-schema.ts` 按生成的 `uam/generated/operation-payload-schema.ts` 逐字段检查快照载荷的类型、必填与未声明字段、有限数值、固定长度数组、字节和循环引用，报告具体字段路径及所属领域诊断码，不引入 MCP 传输上限。任一结构错误停止后续领域语义检查。诊断文本通过 `describeValue` 避免转换调用方对象，执行中的意外异常转为 `execution_failure`。
+
+契约生成器从与 MCP 相同的正式契约快照生成 Core 载荷结构表；`scripts/contracts/payload-schema.mjs` 拥有不含传输上限的投影，Core 不依赖 Zod。
+
+## 契约与文档事实源
+
+Core/Backend/CLI 的 TypeScript 类型生成 operation/schema/CLI envelope；Backend/docs 分发安装版本语料。MCP 按需编译并缓存 schema，输入预算先于深层结构解析；正式二进制输出采用 base64，完整 payload 只放 structuredContent。扩展 JSON 不改写成字节。Host policy 在输入校验后、Backend 调用前执行。
+
+精确字段、限制和恢复流程见[契约](./guide/contracts.md)、[工程验证](./project-validation.md)、[诊断](./guide/diagnostics.md)、[安装文档](./guide/installed-docs.md)、[发布设置](./editor-publish-settings.md)、[二进制协议](./fairygui-binary-package-format.md)和[插件](./publish-plugins.md)。修改入口见[任务指引](./guide/task-recipes.md)，验证见[开发指南](./guide/development.md)。

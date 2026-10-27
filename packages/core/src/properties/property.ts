@@ -21,12 +21,21 @@ export interface IProperty {
 	extras: Record<string, unknown>;
 }
 
+type NullableStringArrayKeys<T> = { [K in keyof T]-?: T[K] extends Array<string | null> ? K : never }[keyof T];
 type UnknownRef = GraphEdge<Property, Property> | RefList<Property> | RefSet<Property> | RefMap<Property>;
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
-	return value !== null && typeof value === 'object' && !Array.isArray(value) && !(value instanceof GraphEdge)
-		&& !(value instanceof RefList) && !(value instanceof RefSet) && !(value instanceof RefMap)
-		&& !ArrayBuffer.isView(value) && !(value instanceof ArrayBuffer);
+	return (
+		value !== null &&
+		typeof value === 'object' &&
+		!Array.isArray(value) &&
+		!(value instanceof GraphEdge) &&
+		!(value instanceof RefList) &&
+		!(value instanceof RefSet) &&
+		!(value instanceof RefMap) &&
+		!ArrayBuffer.isView(value) &&
+		!(value instanceof ArrayBuffer)
+	);
 }
 
 function isArray(value: unknown): value is unknown[] {
@@ -38,7 +47,10 @@ function equalsRef(a: Ref<Property> | null, b: Ref<Property> | null): boolean {
 	return a === b;
 }
 
-function equalsRefSet(a: RefSet<Property> | RefList<Property> | null, b: RefSet<Property> | RefList<Property> | null): boolean {
+function equalsRefSet(
+	a: RefSet<Property> | RefList<Property> | null,
+	b: RefSet<Property> | RefList<Property> | null,
+): boolean {
 	if (!a || !b) return a === b;
 	const aValues = [...a.values()];
 	const bValues = [...b.values()];
@@ -111,6 +123,19 @@ export abstract class Property<T extends IProperty = IProperty> extends GraphNod
 		return super.set(attribute, value);
 	}
 
+	/** @hidden */
+	protected getExtendedLiteral<K extends NullableStringArrayKeys<T>>(attribute: K): T[K] {
+		return super.get(attribute as unknown as LiteralKeys<T>) as unknown as T[K];
+	}
+
+	/** @hidden */
+	protected setExtendedLiteral<K extends NullableStringArrayKeys<T>>(attribute: K, value: T[K]): this {
+		return super.set(
+			attribute as unknown as LiteralKeys<T>,
+			(value as Array<string | null>).slice() as unknown as T[LiteralKeys<T>],
+		);
+	}
+
 	public getName(): string {
 		return (this as Property).get('name');
 	}
@@ -120,11 +145,11 @@ export abstract class Property<T extends IProperty = IProperty> extends GraphNod
 	}
 
 	public getExtras(): Record<string, unknown> {
-		return (this as Property).get('extras');
+		return structuredClone((this as Property).get('extras'));
 	}
 
 	public setExtras(extras: Record<string, unknown>): this {
-		return (this as Property).set('extras', extras) as this;
+		return (this as Property).set('extras', structuredClone(extras)) as this;
 	}
 
 	public clone(): this {
@@ -172,9 +197,9 @@ export abstract class Property<T extends IProperty = IProperty> extends GraphNod
 			} else if (isPlainObject(otherValue)) {
 				this[$attributes][key] = JSON.parse(JSON.stringify(otherValue));
 			} else if (
-				Array.isArray(otherValue)
-				|| otherValue instanceof ArrayBuffer
-				|| ArrayBuffer.isView(otherValue)
+				Array.isArray(otherValue) ||
+				otherValue instanceof ArrayBuffer ||
+				ArrayBuffer.isView(otherValue)
 			) {
 				this[$attributes][key] = (otherValue as unknown as Uint8Array).slice() as any;
 			} else {

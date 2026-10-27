@@ -1,6 +1,16 @@
-# 发布产物还原的不可还原内容
+# 受限发布产物恢复边界
 
-本文档只记录当前仓库已经验证过、且无法仅凭发布产物稳定恢复的内容。
+`restore` 只是一条受限的本地故障恢复路径，不是 FairyGUI 的常规创作入口、第三方发布物导入器或源码还原承诺。本文档记录其安全使用范围，以及当前仓库已经验证过、无法仅凭发布产物稳定恢复的内容。
+
+## 使用范围与安全边界
+
+| 项目 | 当前口径 |
+|---|---|
+| 输入 | 仅处理可信的本地发布目录；不把未知来源 `.fui` / `_fui.bytes` 视为安全输入 |
+| 输出 | 必须是独立工程目录，不接受 `.fairy` 单文件目标 |
+| 路径约束 | 拒绝资源路径、包名、分支名、文件名中的路径逃逸；发布目录内资源若解析到输入目录外也会失败 |
+| 覆盖行为 | 先在相邻暂存目录完成工程和资源写入，再替换目标；`--force` 不会在二进制解析或资源重建前删除旧输出 |
+| 不代表 | 不是恶意文件检测器，也不保证第三方产物能够安全或完整恢复 |
 
 这里的“不可还原”指：
 
@@ -14,13 +24,17 @@
 
 | 结论 | 说明 |
 |---|---|
-| 可恢复目标 | 还原出一个可重读、可打开、结构自洽的 FairyGUI 工程 |
+| 受限恢复目标 | 在可信输入下生成一个可重读、可打开、结构自洽的 FairyGUI 工程 |
 | 不保证目标 | 还原成与原工程逐字节一致的源码工程 |
 | 主要原因 | 发布产物会丢失一部分编辑器阶段信息，或把原始值降精度到运行时格式 |
 
 ## 当前已确认的不可还原项
 
+恢复时推导出的图片尺寸用于资源重建，但不作为原始声明尺寸写入 `package.xml`；生成的字体纹理和字形图片按顺序跟随对应字体。`RestoreResult.document` 保留尺寸省略与资源排序两种写入提示，交给新的 `ProjectWriter` 或 `NodeIO.writeProject()` 仍生效。提示属于内存中的序列化控制，不随 UAM 转换或重新读取传播。`ProjectWriter.setImageWriteHints(image, {})` 清除该图片的全部提示，恢复普通尺寸写回和资源排序；需要保留排序时，设置 `{ packageOrder: { afterId, weight } }`，其中目标是同包、同分支且未设置排序提示的资源。
+
 ### 1. 发布包中根本不存在的资源或动作
+
+发布物中缺失独立资源项的字形图像使用稳定 glyph 图像 ID 的 UTF-8 十六进制生成 `images/glyph-<id>.png`，不同字体的不同图像 ID 不会因字符相同而重名。已有资源项保留发布物中的名称和路径；生成名称不代表原始源文件名，不依据示例包名或字体名称猜测。
 
 | 类别 | 不可还原内容 | 原因 | 当前样本证据 |
 |---|---|---|---|
@@ -52,7 +66,6 @@
 |---|---|---|---|
 | Transition easing | 原工程中的特定 ease 名称 | 当前样本对应二进制读出的就是默认 easing，无法证明原工程曾写过哪个非默认 ease | `Transition/BOSS.xml`、`TRAP.xml`、`GoodHit.xml` 中部分 `Expo.Out` / `Back.Out` / `Bounce.Out` |
 | 简单 Group 节点 | 仅用于编辑器分组、但没有额外运行时语义的 `GGroup` 节点 | 当前样本中的发布组件数据会直接裁掉这类 group，二进制 child list 里既没有 group 节点，也没有可稳定回推的 group 归属索引 | `Basics/Demo_Clip&Scroll.xml`、`Emoji/Main.xml`、`TurnPage/Book.xml` |
-| Group 高级模式 | 原工程 XML 中的 `group.advanced="true"` | 发布 group block写出的是布局与间距等运行时数据，不单独保留编辑器里的高级模式开关；当前样本中二进制读回的 group 会直接落成 `advanced=false` | `Basics/Demo_Grid.xml`、`Transition/Main.xml`、`Transition/PowerUp.xml` |
 | Controller 当前选中页 | 原工程 XML 中的 `controller.selected` 当前页状态 | 发布 controller block稳定保存的是 `homePageType/homePage` 发布首页信息；当前样本中的二进制常写成 `default`，并不保留编辑器工程里当时的非零当前页 | `TurnPage/Main.xml` 的 `bookPos="2"`、`TurnPage/Page.xml` 的 `style="1"` / `side="1"`、`FrontCover.xml` / `BackCover.xml` 的 `side="1"` |
 | Controller 导出标记 | 原工程 XML 中的 `controller.exported="true"` | 当前样本对应的 controller 发布 block只写 `name/pages/homePageType/homePage/actions`，没有独立写出 `exported` | `TurnPage/BackCover.xml`、`TurnPage/FrontCover.xml`、`TurnPage/Page.xml` |
 | 默认值显式性 | 原工程是否显式写出默认属性 | 发布包只保留语义值，不保留“这个默认值当时是否显式写在 XML 里” | 如 `xy="0,0"`、空文本、默认布尔值等 |
@@ -79,11 +92,11 @@
 
 说明：当前实现会尽量贴近 FairyGUI 编辑器写法，但不会把这类文本风格视为“可从发布产物逆推出的正式数据”。
 
-## 当前 restore 的边界
+## 当前恢复输出范围
 
 | 项目 | 当前口径 |
 |---|---|
-| 工程目标 | 生成可读、可打开、可继续编辑的 FairyGUI 工程 |
+| 工程目标 | 在可信输入下生成可读、可打开、可继续编辑的 FairyGUI 工程 |
 | 资源目标 | 尽量恢复包内素材、组件 XML、字体派生图与 `.jta` / `.fnt` 等正式资源 |
 | 不承诺 | 与原工程一模一样的文件名、文本格式、局部编辑器状态 |
 
@@ -104,3 +117,5 @@
 | 可以从发布产物重建“可工作的工程” | 是 |
 | 可以从发布产物重建“原工程的源码真迹” | 否 |
 | 还原结果是否应该继续优化 | 可以，但应只优化“发布产物里确实有证据的部分” |
+
+Node 图片校验、恢复解码和恢复画布使用 16,777,216 像素上限。画布宽高必须为正安全整数，乘积不得超过上限；超限在分配画布前拒绝。

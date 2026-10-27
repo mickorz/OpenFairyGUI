@@ -7,9 +7,12 @@ export interface FairyProjectDesc {
 export interface PublishSettings {
 	binaryFormat?: boolean;
 	compressDesc?: boolean;
+	jpegQuality?: number;
+	compressPNG?: boolean;
 	fileExtension?: string;
 	path?: string;
 	branchPath?: string;
+	includeHighResolution?: number;
 	branchProcessing?: number;
 	seperatedAtlasForBranch?: boolean;
 	packageCount?: number;
@@ -40,6 +43,7 @@ export interface CommonSettings {
 	font?: string;
 	fontSize?: number;
 	textColor?: string;
+	fontAdjustment?: boolean;
 	buttonClickSound?: string;
 	scrollBars?: {
 		defaultDisplay?: string;
@@ -61,6 +65,10 @@ export interface AdaptationSettings {
 	devices?: unknown[];
 }
 
+export type JsonValue = string | number | boolean | null | JsonValue[] | { [key: string]: JsonValue };
+
+export type CustomPropertiesSettings = Record<string, JsonValue>;
+
 export interface I18nLangFile {
 	name: string;
 	path: string;
@@ -75,6 +83,7 @@ export interface ProjectSettings {
 	publish?: PublishSettings;
 	common?: CommonSettings;
 	adaptation?: AdaptationSettings;
+	customProperties?: CustomPropertiesSettings;
 	i18n?: I18nSettings;
 	[key: string]: unknown;
 }

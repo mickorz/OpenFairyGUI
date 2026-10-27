@@ -4,24 +4,25 @@ import os from 'node:os';
 import path from 'node:path';
 import { ByteBuffer } from '../src/io/byte-buffer.js';
 import { FGUI_MAGIC } from '../src/constants.js';
-import { NodeIO, Document } from '../src/index.js';
+import { Document } from '../src/index.js';
+import { NodeIO } from '../src/node.js';
 
 test('binary writer: emits pixel hit test block when image resource provides pixel hit test data', async (t) => {
 	const doc = new Document();
 	const pkg = doc.createPackage('PixelHitTestPkg');
 	pkg.setId('pkg_pixel');
 
-		const image = doc.createImageResource('hit');
+	const image = doc.createImageResource('hit');
 	image.setId('img_hit');
 	image.setPath('/');
 	image.setExported(true);
 	image.setWidth(8);
 	image.setHeight(8);
-		image.setPixelHitTestData({
-			pixelWidth: 4,
-			scaleDenominator: 2,
-			pixels: new Uint8Array([0xaa, 0x55]),
-		});
+	image.setPixelHitTestData({
+		pixelWidth: 4,
+		scaleDenominator: 2,
+		pixels: new Uint8Array([0xaa, 0x55]),
+	});
 	pkg.addResource(image);
 
 	const io = new NodeIO();

@@ -33,6 +33,7 @@
 | 属性名 | Alias | 说明 |
 |---|---|---|
 | `id` |  | 包根标识 |
+| `hasFavorites` |  | 包内是否存在收藏资源 |
 | `compressPNG` |  | 包级图片压缩开关 |
 | `jpegQuality` |  | 包级 JPEG 质量 |
 
@@ -61,6 +62,7 @@
 | `name` |  | 资源名 |
 | `path` |  | 资源路径 |
 | `exported` |  | 是否参与导出 |
+| `favorite` |  | 是否加入资源收藏 |
 
 ### `resources > image`
 
@@ -73,8 +75,16 @@
 | `height` |  | 资源高度 |
 | `gridTile` |  | 平铺网格设置 |
 | `qualityOption` |  | 图片质量选项 |
+| `quality` |  | 自定义图片质量；`qualityOption="custom"` 时写回 |
 | `duplicatePadding` |  | 是否复制边缘像素 |
 | `smoothing` |  | 是否允许平滑 |
+
+### `resources > movieclip`
+
+| 属性名 | Alias | 说明 |
+|---|---|---|
+| `atlas` |  | 动画资源纹理集模式 |
+| `smoothing` |  | 是否允许平滑；缺省为 `true`，仅在 `false` 时写回 |
 
 ### `resources > font`
 
@@ -135,7 +145,7 @@
 | `hitTest` |  | 命中测试资源 |
 | `customData` |  | 自定义数据 |
 | `scroll` |  | 滚动模式 |
-| `scrollBar` |  | 滚动条显示方式 |
+| `scrollBar` |  | 滚动条显示方式：`default`、`visible`、`auto` 或 `hidden` |
 | `scrollBarFlags` |  | 滚动条相关标志 |
 | `scrollBarMargin` |  | 滚动条 margin |
 | `scrollBarRes` |  | 滚动条资源 |
@@ -146,20 +156,54 @@
 | `idnum` |  | 内部编号 |
 | `initName` |  | 初始化名 |
 | `remark` |  | 备注 |
-| `designImageAlpha` |  | 设计图透明度 |
-| `designImageLayer` |  | 设计图层 |
+| `pageController` |  | 根组件分页控制器名称，必须指向本组件控制器 |
+| `showSound` |  | 组件出场音效资源 |
+| `hideSound` |  | 组件退场音效资源 |
+| `designImage` |  | 设计参考图资源 |
+| `designImageForTest` |  | 是否在测试视图显示设计参考图 |
+| `designImageAlpha` |  | 设计图透明度，缺省值为 `50` |
+| `designImageLayer` |  | 设计图层：`0` 底层，`1` 顶层 |
 | `designImageOffsetX` |  | 设计图 X 偏移 |
 | `designImageOffsetY` |  | 设计图 Y 偏移 |
 
-### 显示对象公共标识层
+### 根组件自定义属性 `<customProperty>`
 
-以下属性当前作为 display-list 对象的公共标识层存在于协议中。
+`<customProperty>` 是 `<component>` 的直接子节点，可重复出现。
+
+| 属性名 | Alias | 说明 |
+|---|---|---|
+| `target` |  | 组件内目标对象路径 |
+| `propertyId` |  | 对外暴露的属性类型，`0` 表示文本、`1` 表示图标 |
+| `label` |  | 编辑器显示标签 |
+
+### 显示对象公共属性
+
+以下属性适用于全部具体 display-list 对象。后续各标签表只补充标签专属属性或重申重点字段；未重复列出不代表该公共属性不适用。
 
 | 属性名 | Alias | 说明 |
 |---|---|---|
 | `id` |  | 对象标识 |
 | `name` |  | 对象名 |
 | `relation` |  | 关系引用字段 |
+| `xy` |  | 位置 |
+| `size` |  | 尺寸 |
+| `locked` |  | 是否锁定 |
+| `restrictSize` |  | 尺寸限制 |
+| `aspect` |  | 宽高约束 |
+| `pivot` |  | pivot |
+| `anchor` |  | 是否以 pivot 作为坐标锚点 |
+| `scale` |  | 缩放 |
+| `skew` |  | 倾斜，格式为 `x,y` |
+| `rotation` |  | 旋转 |
+| `alpha` |  | 透明度 |
+| `visible` |  | 是否可见 |
+| `touchable` |  | 是否可触摸 |
+| `grayed` |  | 是否置灰 |
+| `tooltips` |  | tooltip 文本 |
+| `customData` |  | 自定义数据 |
+| `blend` |  | 混合模式 |
+| `filter` |  | 滤镜类型 |
+| `filterData` |  | 滤镜数据 |
 
 ### `<component>` 子组件实例
 
@@ -207,10 +251,12 @@
 | `pivot` |  | pivot |
 | `anchor` |  | anchor |
 | `scale` |  | 缩放 |
+| `skew` |  | 倾斜，格式为 `x,y` |
 | `group` |  | 所属 group |
 | `rotation` |  | 旋转 |
 | `alpha` |  | 透明度 |
 | `visible` |  | 是否可见 |
+| `touchable` |  | 是否可触摸 |
 | `grayed` |  | 是否置灰 |
 | `pkg` |  | 资源包标识 |
 | `filter` |  | 滤镜类型 |
@@ -231,6 +277,7 @@
 | `alpha` |  | 透明度 |
 | `visible` |  | 是否可见 |
 | `touchable` |  | 是否可触摸 |
+| `grayed` |  | 是否置灰 |
 | `skew` |  | 倾斜 |
 | `type` |  | 图形类型 |
 | `lineSize` |  | 线宽 |
@@ -253,10 +300,12 @@
 | `xy` |  | 位置 |
 | `size` |  | 尺寸 |
 | `pivot` |  | pivot |
+| `anchor` |  | 是否以 pivot 作为坐标锚点 |
 | `group` |  | 所属 group |
 | `rotation` |  | 旋转 |
 | `alpha` |  | 透明度 |
 | `visible` |  | 是否可见 |
+| `touchable` |  | 是否可触摸 |
 | `grayed` |  | 是否置灰 |
 | `fileName` |  | 资源文件名 |
 | `pkg` |  | 资源包标识 |
@@ -270,8 +319,12 @@
 | `xy` |  | 位置 |
 | `size` |  | 尺寸 |
 | `pivot` |  | pivot |
+| `anchor` |  | 是否以 pivot 作为坐标锚点 |
 | `scale` |  | 缩放 |
-| `group` |  | 所属 group |
+| `rotation` |  | 旋转 |
+| `alpha` |  | 透明度 |
+| `visible` |  | 是否可见 |
+| `touchable` |  | 是否可触摸 |
 | `grayed` |  | 是否置灰 |
 | `url` |  | 加载地址 |
 | `align` |  | 水平对齐 |
@@ -297,6 +350,13 @@
 |---|---|---|
 | `xy` |  | 位置 |
 | `size` |  | 尺寸 |
+| `pivot` |  | pivot |
+| `anchor` |  | 是否以 pivot 作为坐标锚点 |
+| `rotation` |  | 旋转 |
+| `alpha` |  | 透明度 |
+| `visible` |  | 是否可见 |
+| `touchable` |  | 是否可触摸 |
+| `grayed` |  | 是否置灰 |
 | `url` |  | 加载地址 |
 | `align` |  | 水平对齐 |
 | `vAlign` |  | 垂直对齐 |
@@ -309,6 +369,7 @@
 | `frame` |  | 帧号 |
 | `loop` |  | 是否循环 |
 | `color` |  | 颜色 |
+| `clearOnPublish` |  | 发布时清理 |
 
 ### `<text>`
 
@@ -317,8 +378,15 @@
 | `xy` |  | 位置 |
 | `size` |  | 尺寸 |
 | `restrictSize` |  | 尺寸限制 |
+| `pivot` |  | pivot |
+| `anchor` |  | 是否以 pivot 作为坐标锚点 |
 | `customData` |  | 自定义数据 |
 | `group` |  | 所属 group |
+| `rotation` |  | 旋转 |
+| `alpha` |  | 透明度 |
+| `visible` |  | 是否可见 |
+| `touchable` |  | 是否可触摸 |
+| `grayed` |  | 是否置灰 |
 | `font` |  | 字体 |
 | `fontSize` |  | 字号 |
 | `color` |  | 颜色 |
@@ -342,6 +410,7 @@
 | `autoClearText` |  | 自动清空文本 |
 | `demoText` |  | 示例文本 |
 | `faceDilate` |  | 字面扩张 |
+| `outlineSoftness` |  | 描边柔化 |
 | `underlaySoftness` |  | 下层柔化 |
 | `vars` |  | 模板变量开关 |
 | `prompt` | `promptText` | 输入提示 |
@@ -354,6 +423,44 @@
 
 | 属性名 | Alias | 说明 |
 |---|---|---|
+| `xy` |  | 位置 |
+| `size` |  | 尺寸 |
+| `restrictSize` |  | 尺寸限制 |
+| `pivot` |  | pivot |
+| `anchor` |  | 是否以 pivot 作为坐标锚点 |
+| `customData` |  | 自定义数据 |
+| `group` |  | 所属 group |
+| `rotation` |  | 旋转 |
+| `alpha` |  | 透明度 |
+| `visible` |  | 是否可见 |
+| `touchable` |  | 是否可触摸 |
+| `grayed` |  | 是否置灰 |
+| `font` |  | 字体 |
+| `fontSize` |  | 字号 |
+| `color` |  | 颜色 |
+| `align` |  | 水平对齐 |
+| `vAlign` |  | 垂直对齐 |
+| `autoSize` |  | 自动尺寸 |
+| `singleLine` |  | 单行模式 |
+| `text` |  | 文本内容 |
+| `input` |  | 是否输入文本 |
+| `ubb` |  | 是否启用 UBB |
+| `leading` |  | 行间距 |
+| `letterSpacing` |  | 字间距 |
+| `underline` |  | 下划线 |
+| `italic` |  | 斜体 |
+| `bold` |  | 粗体 |
+| `strikethrough` |  | 删除线 |
+| `strokeColor` |  | 描边颜色 |
+| `strokeSize` |  | 描边宽度 |
+| `shadowColor` |  | 阴影颜色 |
+| `shadowOffset` |  | 阴影偏移 |
+| `autoClearText` |  | 自动清空文本 |
+| `demoText` |  | 示例文本 |
+| `faceDilate` |  | 字面扩张 |
+| `outlineSoftness` |  | 描边柔化 |
+| `underlaySoftness` |  | 下层柔化 |
+| `vars` |  | 模板变量开关 |
 | `prompt` | `promptText` | 输入提示 |
 | `maxLength` |  | 最大长度 |
 | `restrict` |  | 输入限制 |
@@ -364,7 +471,39 @@
 
 | 属性名 | Alias | 说明 |
 |---|---|---|
+| `xy` |  | 位置 |
+| `size` |  | 尺寸 |
+| `pivot` |  | pivot |
+| `anchor` |  | 是否以 pivot 作为坐标锚点 |
+| `customData` |  | 自定义数据 |
+| `group` |  | 所属 group |
+| `rotation` |  | 旋转 |
+| `alpha` |  | 透明度 |
+| `visible` |  | 是否可见 |
+| `touchable` |  | 是否可触摸 |
+| `grayed` |  | 是否置灰 |
+| `font` |  | 字体 |
+| `fontSize` |  | 字号 |
+| `color` |  | 颜色 |
+| `align` |  | 水平对齐 |
+| `vAlign` |  | 垂直对齐 |
+| `autoSize` |  | 自动尺寸 |
+| `singleLine` |  | 单行模式 |
+| `text` |  | 文本内容 |
+| `ubb` |  | 是否启用 UBB |
+| `leading` |  | 行间距 |
+| `letterSpacing` |  | 字间距 |
+| `underline` |  | 下划线 |
+| `italic` |  | 斜体 |
+| `bold` |  | 粗体 |
+| `strikethrough` |  | 删除线 |
+| `strokeColor` |  | 描边颜色 |
+| `strokeSize` |  | 描边宽度 |
+| `shadowColor` |  | 阴影颜色 |
+| `shadowOffset` |  | 阴影偏移 |
+| `autoClearText` |  | 自动清空文本 |
 | `restrictSize` |  | 尺寸限制 |
+| `outlineSoftness` |  | 描边柔化 |
 | `underlaySoftness` |  | 下层柔化 |
 
 ### `<group>`
@@ -374,8 +513,14 @@
 | `xy` |  | 位置 |
 | `size` |  | 尺寸 |
 | `locked` |  | 是否锁定 |
+| `pivot` |  | pivot |
+| `anchor` |  | 是否以 pivot 作为坐标锚点 |
 | `group` |  | 所属 group |
+| `rotation` |  | 旋转 |
+| `alpha` |  | 透明度 |
 | `visible` |  | 是否可见 |
+| `touchable` |  | 是否可触摸 |
+| `grayed` |  | 是否置灰 |
 | `layout` |  | 布局模式 |
 | `lineGap` |  | 行间距 |
 | `colGap` | `columnGap` | 列间距 |
@@ -394,8 +539,11 @@
 | `vAlign` |  | 垂直对齐 |
 | `lineGap` |  | 行间距 |
 | `colGap` | `columnGap` | 列间距 |
-| `lineItemCount` | `lineCount` | 单行项目数量 |
-| `autoItemSize` | `autoResizeItem` | 自动调整项目尺寸 |
+| `lineItemCount` |  | `flow_hz` 每行项目数、`flow_vt` 每列项目数、`pagination` 每页列数 |
+| `lineItemCount2` |  | `pagination` 每页行数 |
+| `autoItemSize` | `autoResizeItem` | 自动调整项目尺寸；single column/row 缺省为 `true`，flow/pagination 缺省为 `false` |
+| `renderOrder` |  | 子项渲染顺序：`ascent`、`descent`、`arch` |
+| `apex` |  | `renderOrder="arch"` 时的顶点子项索引 |
 | `selectionMode` |  | 选择模式 |
 | `selectionController` |  | 选择控制器 |
 | `defaultItem` |  | 默认项目资源 |
@@ -403,7 +551,7 @@
 | `controller` |  | controller override |
 | `overflow` |  | overflow 模式 |
 | `scroll` |  | 滚动模式 |
-| `scrollBar` |  | 滚动条显示方式 |
+| `scrollBar` |  | 滚动条显示方式：`default`、`visible`、`auto` 或 `hidden` |
 | `scrollBarFlags` |  | 滚动条相关标志 |
 | `scrollBarMargin` |  | 滚动条 margin |
 | `scrollBarRes` |  | 滚动条资源 |
@@ -412,12 +560,20 @@
 | `clipSoftness` |  | 裁剪软边 |
 | `treeView` |  | 是否树模式 |
 | `indent` |  | 树缩进 |
-| `clickToExpand` |  | 点击展开方式 |
+| `clickToExpand` |  | 点击展开方式：`0`=无动作，`1`=单击，`2`=双击 |
 | `autoClearItems` |  | 自动清空项目 |
+| `scrollItemToViewOnClick` |  | 点击子项后是否自动滚动到可见区域 |
+| `foldInvisibleItems` |  | 布局时是否折叠不可见子项 |
 | `xy` |  | 位置 |
 | `size` |  | 尺寸 |
+| `pivot` |  | pivot |
+| `anchor` |  | 是否以 pivot 作为坐标锚点 |
 | `group` |  | 所属 group |
+| `rotation` |  | 旋转 |
+| `alpha` |  | 透明度 |
+| `visible` |  | 是否可见 |
 | `touchable` |  | 是否可触摸 |
+| `grayed` |  | 是否置灰 |
 
 ## 扩展子节点协议
 
@@ -427,8 +583,8 @@
 |---|---|---|
 | `mode` |  | 按钮模式 |
 | `sound` |  | 点击音效 |
-| `soundVolumeScale` |  | 音量缩放 |
-| `downEffect` |  | 按下效果 |
+| `volume` |  | 音量百分比（`0`–`100`） |
+| `downEffect` |  | 按下效果：`none`、`dark`、`scale` |
 | `downEffectValue` |  | 按下效果值 |
 | `title` |  | 标题 |
 | `selectedTitle` |  | 选中标题 |
@@ -449,6 +605,8 @@
 | `titleColor` |  | 标题颜色 |
 | `titleFontSize` |  | 标题字号 |
 | `prompt` |  | 提示文本 |
+| `sound` |  | 点击音效资源 |
+| `volume` |  | 音量百分比（`0`–`100`） |
 
 ### `<ComboBox>`
 
@@ -457,8 +615,13 @@
 | `dropdown` |  | 下拉组件资源 |
 | `title` |  | 标题 |
 | `icon` |  | 图标 |
+| `titleColor` |  | 标题颜色 |
+| `direction` |  | 弹出方向：`auto`、`up`、`down` |
+| `sound` |  | 点击音效资源 |
+| `volume` |  | 音量百分比（`0`–`100`） |
 | `visibleItemCount` |  | 可见条目数 |
 | `selectionController` |  | 选择控制器 |
+| `autoClearItems` |  | 自动清空项目 |
 
 ### `<ProgressBar>`
 
@@ -469,6 +632,8 @@
 | `value` |  | 当前值 |
 | `max` |  | 最大值 |
 | `min` |  | 最小值 |
+| `sound` |  | 音效资源 |
+| `volume` |  | 音量百分比（`0`–`100`） |
 
 ### `<Slider>`
 
@@ -510,6 +675,7 @@
 | `condition` |  | gear 条件 |
 | `ease` |  | 缓动类型 |
 | `duration` |  | 时长 |
+| `delay` |  | 补间延迟，单位秒，默认 0 |
 
 ### `<controller>`
 
@@ -518,6 +684,11 @@
 | `name` |  | 控制器名 |
 | `pages` |  | 页面集合 |
 | `selected` |  | 当前选中页 |
+| `alias` |  | 编辑器中显示的备注名；导出为组件属性时作为显示名称 |
+| `autoRadioGroupDepth` |  | 是否自动调整受控单选按钮的层级 |
+| `exported` |  | 是否导出为组件属性 |
+| `homePageType` |  | 首页策略：`default`、`specific`、`branch` 或 `variable` |
+| `homePage` |  | `specific` 时为页面 id，`variable` 时为工程变量键 |
 
 ### `<action>`
 
@@ -543,7 +714,7 @@
 | `autoPlayRepeat` | `autoPlayTimes` | 自动播放重复次数 |
 | `autoPlayDelay` |  | 自动播放延迟 |
 | `options` |  | 选项 |
-| `fps` |  | 帧率 |
+| `frameRate` |  | 帧率 |
 
 ### `<transition><item>`
 
@@ -557,8 +728,9 @@
 | `yoyo` |  | 是否往返 |
 | `label` |  | 标签 |
 | `label2` |  | 第二标签 |
-| `path` |  | 路径 |
-| `ease` |  | 缓动类型 |
+| `path` |  | XY 补间的运动轨迹路径 |
+| `customEase` |  | `ease="Custom"` 时使用的自定义缓动曲线数据，与 `path` 运动轨迹相互独立 |
+| `ease` |  | 缓动类型；`Custom` 表示使用 `customEase` |
 | `type` |  | 项目类型 |
 | `value` |  | 值 |
 | `startValue` |  | 起始值 |
@@ -577,6 +749,16 @@
 | `level` |  | 层级 |
 | `isFolder` |  | 是否文件夹 |
 | `controllers` |  | controller 覆盖 |
+
+### `<component><property>` / `<list><item><property>`
+
+| 属性名 | Alias | 说明 |
+|---|---|---|
+| `target` |  | 被覆盖对象标识，不能为空 |
+| `propertyId` |  | 非负整数属性编号 |
+| `value` |  | 覆盖值；空字符串是有效值 |
+
+同一宿主下的 `property` 子节点按 XML 顺序保存。
 
 ### `<ComboBox><item>`
 

@@ -1,0 +1,387 @@
+# Changelog
+
+[中文](./CHANGELOG_CN.md)
+
+## Unreleased
+
+## v0.7.x
+
+### v0.7.0 ([Release](https://github.com/OpenFairyGUI/OpenFairyGUI/releases/tag/v0.7.0))
+
+Agent tooling: MCP default guidance/docs tool, base64 structured binary output (transport breaking change), opt-in host publish; CLI one-shot transactions; bilingual governance and Claude evaluation runner.
+
+Bug Fixes:
+
+- core, mcp: Model editor settings fields so queried settings can be resubmitted through MCP; reject malformed operations and selectors during transaction preflight without stringifying caller values in diagnostics.
+- core: Validate transaction snapshot payloads field by field against generated canonical contracts, rejecting malformed structures before applying operations.
+- tests: Reduce MCP settings round-trip fixtures and reuse compiled validators; wait for actual idle file-session lock release to stabilize Windows regression checks.
+
+- core: Write ComboBox component-instance `selectionController` bindings to binary packages as the owning component's controller index instead of always `-1`, so decoded bindings survive rewrites and UAM round trips.
+
+- backend: Allow bounded Windows process-identity probe cold starts. When the probe is unavailable, acquire the lock with an unverified identity instead of refusing to open; a live PID keeps such a lock.
+
+- core: Preserve complete Label binary input settings through UAM and re-encoding, including null versus empty strings. Reject unsupported XML conversion before writing. Label UAM uses inputSettings instead of the prompt-only field. Synchronize the frozen dependency lockfile.
+
+- mcp: Include bounded error messages and nested diagnostic codes in failed tool text so clients that omit structured errors can report the actual blocker.
+
+- Development and CI: Enforce formatting, test Node 22/24 on Ubuntu/Windows for main/next, build before testing without rebuilding shared outputs inside tests, and gate coverage. Separate release verification from write permissions, validate bilingual notes and publish exact tarballs, deploy docs only after the matching CI succeeds, and pin Actions to SHAs.
+
+- core: Share Button/Label extension instance I/O, retaining Button controller/page/selection and Label prompt. Components always re-encode against the destination string table; resource filenames and ordering use formal properties and source paths remain in reader context.
+- core: Tighten property accessor and XML protocol types, re-export all UAM APIs at the root, provide structured protocol I/O errors and `projection_failed` with operation location, and preserve filesystem access failures in existence checks.
+- cli, functions: Reject unknown publish package names, add `--no-plugins`, share Backend project resolution, and limit Node image validation, restore decoding and canvases to 16,777,216 pixels.
+
+- core: Decode every Group in a published component child list as an advanced Group, so binary read→write→read no longer drops layout Groups.
+- cli: Depend on core and functions at runtime instead of bundling private copies next to the backend's copies.
+- workspace, functions, cli: Keep root sharp development-only and bound optional Functions/CLI sharp support to `>=0.33.0 <0.35.0`. Exclude duplicate TypeScript sources from published packages and import the CLI entry in the current process.
+- mcp: Compile and cache tool contracts on demand instead of converting all schemas during startup and initialization; generate and cache precise discovery JSON schemas on demand while preserving Host policies and SDK dynamic tool management.
+- backend: Share runtime and class identity between the root and `/node` entries within both ESM and CJS; isolate CJS interop helpers so the root never loads the Node bridge indirectly.
+- backend: Canonicalize Node case aliases using file identity and compare exact names; browser storage declares case sensitivity, defaulting to case-sensitive OPFS semantics.
+- backend, mcp: An empty `allowedProjectRoots` list allows no projects, and stdio refuses to start when `OPENFAIRYGUI_ALLOWED_PROJECT_ROOTS` is set but lists no roots.
+- backend: `project_open_failed` carries a `reason` for missing, ambiguous, non-project, symlinked, inaccessible and unreadable projects.
+- backend: Publish complete Node lock metadata atomically; use OS process creation identities to detect PID reuse and serialize concurrent recovery, acquisition and release with process tickets.
+- backend: Stage only project-owned files, settings and assets, leaving unrelated trees and the root directory in place. Roll back managed entries on failure; successful commits with retained backups report `save_backup_retained`.
+- mcp: Bound `validate_session`, `get_project_outline` and `get_events` responses to 16 MiB, and log unhandled tool failures with their requestId to stderr.
+
+Features:
+
+- backend: Limit open sessions with `maxSessions` (default 32) and reclaim clean idle sessions with `idleSessionTimeoutMs` (default 30 minutes; zero disables). Dirty or busy sessions remain open. Capability schema version is 15.
+
+Breaking changes:
+
+- core: Import `BinaryReader` / `BinaryWriter` from `/project-io`; `ReaderContext` is private. Remove original component slice reuse and extras fallbacks for protocol fields.
+
+- backend: `BackendFileSystem.runProjectWriteTransaction` resolves to a `ProjectWriteTransactionResult`; hosts return `{}`, or `retainedBackupPaths` for previous project copies they could not remove.
+
+## v0.6.x
+
+### v0.6.3 ([Release](https://github.com/OpenFairyGUI/OpenFairyGUI/releases/tag/v0.6.3))
+
+Bug Fixes:
+
+- core: Preserve component-instance and component-derived page controllers through UAM conversion, binary round trips and project writing, with formal optional fields and reference validation.
+- core: Normalize optional animation and size Gear fields consistently, preventing valid compact values from blocking project saves. Fixes [#152](https://github.com/OpenFairyGUI/OpenFairyGUI/issues/152).
+
+Other:
+
+- backend, docs: Regenerate public schemas and installed documentation; add save/reopen and binary regression coverage, exercise successful LayaBox saves and publication, and synchronize bilingual writing guidance.
+
+### v0.6.2 ([Release](https://github.com/OpenFairyGUI/OpenFairyGUI/releases/tag/v0.6.2))
+
+Bug Fixes:
+
+- core: Preserve component-instance `fileName` hints through UAM lifting, normalization and materialization, with a formal optional field and validation.
+- core: Write Color Gear values without a trailing comma when no outline color is configured, and normalize an explicitly empty outline field consistently. Supported projects now retain full UAM fidelity through editing, saving and reopening. Fixes [#149](https://github.com/OpenFairyGUI/OpenFairyGUI/issues/149).
+
+Other:
+
+- backend, docs: Regenerate public schemas and installed documentation; add seven round-trip/save regression cases and synchronize bilingual project-writing guidance.
+
+### v0.6.1 ([Release](https://github.com/OpenFairyGUI/OpenFairyGUI/releases/tag/v0.6.1))
+
+Other:
+
+- core: Use concrete XML serializer types and separate text, list, component-instance and behavior writing while preserving defaults and node order.
+- core: Share package output plans between validation and writing; separate project discovery, package descriptions, resource hydration and component XML validation.
+- core, functions: Pass per-publish resource selection, effective IDs and filenames through explicit contexts to external resources, atlases and binary encoding. Standalone BinaryWriter no longer reads selection left by an earlier publish; sequential Document reuse remains covered, without claiming concurrent publishing safety.
+- functions: Separate code-generation settings, models, rendering and file output while preserving generated contents and cleanup order.
+- core: Share text, image/MovieClip and component-instance property rules between whole-project validation and transaction preflight, preserving diagnostics, defaults and rejected-input immutability.
+- workspace, docs: Expand regression coverage for repeated publishing, filesystem failures and property snapshots; synchronize bilingual architecture, examples and installed documentation.
+
+### v0.6.0 ([Release](https://github.com/OpenFairyGUI/OpenFairyGUI/releases/tag/v0.6.0))
+
+Bug Fixes:
+
+- backend: Reserve materialization targets before asynchronous writes, capture queued request values, reject rebinding locked sessions, and retain sessions when lock release fails. Node lock metadata read errors and ownership mismatches no longer report successful closure.
+- backend: Report uncertain disk state and retained recovery directories when both commit and rollback fail; recognize transaction results across separately bundled package entries.
+- core: Preserve case-only source renames, all supported project types and zero-pivot anchors; reject invalid resource-order hints before writing any files. Own nested Gear values and resource metadata instead of sharing caller references.
+- core: Keep directory enumeration failures incomplete, support mixed file/directory adapters without stat, and enforce binary reads within the supplied view and string table.
+- functions: Make repeated atlas publication deterministic with failed-attempt cleanup, and generate collision-free restored glyph filenames from stable image IDs.
+
+Other:
+
+- backend: Centralize session ownership and operation queues, separate persistence from authoring, and simplify cache refresh.
+- core, functions: Share display-property update rules, split XML and restore responsibilities, and use typed Core image write hints for restored resource ordering.
+- workspace, docs: Split contract generation by responsibility, expand fault-injection and installed-consumer coverage, and synchronize bilingual contracts, architecture and usage guidance.
+
+Breaking changes:
+
+- backend, mcp: Backend contract version is `3.0.0` and capability schema version is `12`. `refreshCache` returns a snapshot synchronously; `getJob`, `listJobs`, `cancelJob` and their MCP surfaces are removed. Hosts must update their discovery and cache-refresh integrations.
+- core: Custom filesystem adapters must distinguish absent optional directories (`ENOENT` / `NotFoundError`) from read failures. Without `stat`, mixed-entry directory probes must report ordinary files as `ENOTDIR` / `TypeMismatchError`.
+
+## v0.5.x
+
+### v0.5.0 ([Release](https://github.com/OpenFairyGUI/OpenFairyGUI/releases/tag/v0.5.0))
+
+This stable release includes all changes from `0.5.0-alpha.1` through `0.5.0-alpha.4`.
+
+Features:
+
+- backend, mcp: Add bounded reads of the committed public UAM model and primary resource bytes, with detached results, revision checks and faithful source diagnostics. Capability schema version is 11.
+- mcp: Add per-tool Host policies with declared failure schemas, single-call Backend delegation and public initialize instructions. Host failures retain their structured details without widening Backend contracts.
+- examples, docs: Add executable Agent workflows for reward-panel states, layout and entrance animation, and reusable reward-card generation, with SDK/MCP save and independent readback verification.
+
+Bug Fixes:
+
+- core: Preserve absent Gear defaults and component-instance controller overrides through UAM and Project XML round trips.
+- functions: Include bitmap-font textures and glyph images in publishing, resolve source font paths consistently, and encode external font names without publishing their source resources.
+- functions: Expand project variables in publish and code-generation paths, transliterate Chinese identifiers, and prevent generated class and member name collisions.
+- backend: Allow previews that repair existing broken references while validating the projected result.
+- mcp: Restore SDK-native Host tool discovery and registration lifecycle changes; accept schema-declared JSON byte arrays within the aggregate 8 MiB input budget.
+
+Other:
+
+- core, functions, backend: Consolidate common XML state, Loader3D assignment and successful-save completion; isolate restore font preparation and remove unused resource filtering.
+- workspace: Remove consumer helper dependencies on their runner, require an explicit comparison base for fast checks outside PR environments, and avoid duplicate builds and contract checks in full local verification.
+- docs: Synchronize bilingual protocol, architecture and verification guidance, centralize Agent onboarding, and update examples and installation guidance for stable `0.5.0`.
+
+Breaking changes:
+
+- core, backend: All value-bearing UAM Gears can have a `null` default to retain the owner's initial value; consumers must handle this in Look, Size, Color, Animation, and FontSize gears. Backend contract version is `2.0.0-p3`.
+
+### v0.5.0-alpha.4 ([Release](https://github.com/OpenFairyGUI/OpenFairyGUI/releases/tag/v0.5.0-alpha.4))
+
+Bug Fixes:
+
+- core: Preserve absent Gear defaults and component-instance controller overrides through UAM and Project XML round trips.
+- functions: Include bitmap-font textures and glyph images in publishing, resolve source font paths consistently, and encode external font names without publishing their source resources.
+- functions: Expand project variables in publish and code-generation paths, transliterate Chinese identifiers, and prevent generated class and member name collisions.
+- backend, mcp: Allow previews that repair existing broken references while validating the projected result, and accept schema-declared JSON byte arrays within the aggregate 8 MiB input budget.
+
+Other:
+
+- core, functions, backend: Consolidate common XML state and Loader3D assignment, remove unused resource filtering, isolate restore font preparation, and reuse successful-save completion logic.
+- workspace: Remove reverse dependencies from consumer helpers to their runner, expand regression coverage, and synchronize bilingual protocol and architecture documentation.
+
+Breaking changes:
+
+- core, backend: All value-bearing UAM Gears can now have a `null` default to retain the owner's initial value; consumers must handle this in Look, Size, Color, Animation, and FontSize gears. Backend contract version is `2.0.0-p3`.
+
+### v0.5.0-alpha.3 ([Release](https://github.com/OpenFairyGUI/OpenFairyGUI/releases/tag/v0.5.0-alpha.3))
+
+Features:
+
+- examples, docs: Add three executable Agent authoring workflows for reward-panel states, layout and entrance animation, and reusable reward-card generation, with SDK/MCP consumers verifying saves and independent readback.
+
+Other:
+
+- workspace: Require a PR comparison base for fast checks outside PR environments, keep plan previews free of check execution, and remove duplicate workspace builds and contract checks from full local verification.
+- docs: Organize verification around four common scenarios, synchronize bilingual onboarding and development guides, and record scope-appropriate checks in the PR template.
+
+### v0.5.0-alpha.2 ([Release](https://github.com/OpenFairyGUI/OpenFairyGUI/releases/tag/v0.5.0-alpha.2))
+
+Features:
+
+- mcp: Add per-tool Host policies with declared failure schemas, single-call Backend delegation and public initialize instructions. Host failures retain their structured details without widening Backend contracts. [#138](https://github.com/OpenFairyGUI/OpenFairyGUI/issues/138)
+
+Bug Fixes:
+
+- mcp: Restore SDK-native discovery for Host tools registered before or after connection, including public registration lifecycle changes, while preserving compact contract schemas.
+
+Other:
+
+- workspace: Verify Host composition, approval-gated real writes, instructions and installed documentation through SDK integration tests and isolated tarball consumers.
+- docs: Simplify both READMEs and centralize Agent onboarding in the getting-started guides.
+
+### v0.5.0-alpha.1 ([Release](https://github.com/OpenFairyGUI/OpenFairyGUI/releases/tag/v0.5.0-alpha.1))
+
+Features:
+
+- backend, mcp: Add bounded reads of the committed public UAM model and individual primary resource bytes, with detached results, edit-revision checks and faithful source diagnostics. Capability schema version is 11. [#136](https://github.com/OpenFairyGUI/OpenFairyGUI/pull/136)
+
+Other:
+
+- workspace: Verify unsaved model and resource-byte reads through installed SDK and stdio MCP consumers, including stale revisions and unchanged source files; synchronize the public method catalog documentation.
+
+## v0.4.x
+
+### v0.4.0 ([Release](https://github.com/OpenFairyGUI/OpenFairyGUI/releases/tag/v0.4.0))
+
+Features:
+
+- backend, mcp: Add revision-bound, isolated project/package settings and entity property queries with fixed projections, explicit response budgets and selector errors; capability schema version is 10.
+- backend, mcp: Preview transactions by executing and discarding isolated snapshots through the existing async transaction entrypoint, preserving diagnostics without changing session state or disk; previews reserve no revision and do not guarantee saving.
+- cli: Add `inspect --json` using the existing inspection report without terminal logs.
+- mcp: Expose Core-derived operation schemas and catalog resources, with method-specific Backend input/output contracts and explicit JSON byte conversion for resource snapshots.
+
+Fixes:
+
+- core: Preserve the image-validation Worker's listener initialization when bundlers consume its public entrypoint.
+- core: Resolve relation indexes against published children, preserve valid zero values in transitions and gears, and reject duplicate Gear types on a display node.
+- core: Model XY Gear percentage coordinates; preserve empty values, `-`, and strings containing `|` in Text/Icon gears, explicitly rejecting page delimiters that cannot be written losslessly to Project XML before any write.
+- functions: Read canonical Gear page values during dependency and atlas scans, and include component added/removed-stage sounds in the resource closure.
+
+Other:
+
+- workspace: Add reproducible development guidance, pinned-fixture verification, read-only environment diagnostics, impact-selected tests and unified quality entrypoints, with PR checks for documentation builds, guidance links and bilingual record structure.
+- workspace: Verify five packed packages in an isolated production consumer before release, covering exports, ESM/CJS types, browser bundles, CLI/MCP, and executable inspect/validate and revision-checked edit/save examples shared with documentation.
+- workspace: Generate contract snapshots and bilingual catalogs from canonical TypeScript types; reject incomplete method mappings and generated-file drift in repository and documentation checks.
+
+Breaking changes:
+
+- workspace: Require Node.js 22 or newer, dropping Node 20 support. Use Node 22 for CI, documentation deployment and releases while retaining Linux/Windows consumer checks.
+- mcp: Reject unknown fields on closed contract objects and invalid nested payloads. Replace the shared `OPENFAIRYGUI_BACKEND_TOOL_OUTPUT_SCHEMA` export with each tool definition's precise `outputSchema`.
+- core, backend: Allow `null` XY/Text/Icon Gear defaults to represent absent overrides; Backend contract version is `2.0.0-p2`. Saving or materializing pure in-memory sessions requires explicitly bound host storage or a per-call filesystem; path labels no longer acquire runtime filesystem capabilities automatically.
+
+## v0.3.x
+
+### v0.3.1 ([Release](https://github.com/OpenFairyGUI/OpenFairyGUI/releases/tag/v0.3.1))
+
+Fixes:
+
+- core: Tighten binary and XML trust boundaries with decompression budgets, numeric range validation, and safe XML escaping, and encode bitmap-font glyph IDs using the unsigned 16-bit runtime contract.
+- backend,mcp: Add allowed project roots with real-path containment, whole-tree symbolic-link rejection before opening, stale-lock recovery, unique session IDs, atomic project saves, bounded MCP inputs, and stable error envelopes that do not leak internals.
+- functions: Centralize structured SVG safety validation, abort declared-plugin failures by default, and publish explicit Node output directories through rollback-safe directory swaps.
+
+Other:
+
+- workspace: Require Node.js 20 or newer, expand CI to Node 20/22/24, make cleanup cross-platform, broaden lint coverage, and document public API stability and publish-transaction limits.
+
+Prerelease builds from `v0.3.0-alpha.1` through `v0.3.0-alpha.4` are consolidated into the stable release below. `v0.3.0` also contains every stable fix through `v0.2.6`.
+
+### v0.3.0 ([Release](https://github.com/OpenFairyGUI/OpenFairyGUI/releases/tag/v0.3.0))
+
+Features:
+
+- functions,cli: Add project validation with `valid`, `invalid`, and `incomplete` results, desktop-compatible geometry checks, diagnostics, and JSON output. [#96](https://github.com/OpenFairyGUI/OpenFairyGUI/pull/96) [#99](https://github.com/OpenFairyGUI/OpenFairyGUI/pull/99) [#101](https://github.com/OpenFairyGUI/OpenFairyGUI/pull/101)
+- mcp: Add `openfairygui_backend_get_project_outline` for compact, revision-bound project structure discovery. [#93](https://github.com/OpenFairyGUI/OpenFairyGUI/pull/93)
+
+Fixes:
+
+- core: Preserve cross-package image `packageId` values through UAM lift/materialization and Project XML round trips, and accept the standard SVG namespace while continuing to reject external or scriptable SVG sources. [#124](https://github.com/OpenFairyGUI/OpenFairyGUI/pull/124)
+
+### v0.3.0-alpha.4 ([Release](https://github.com/OpenFairyGUI/OpenFairyGUI/releases/tag/v0.3.0-alpha.4))
+
+Features:
+
+- functions,cli: Reject invalid project values during validation instead of reporting strictly invalid projects as safe to use. [#101](https://github.com/OpenFairyGUI/OpenFairyGUI/pull/101)
+
+### v0.3.0-alpha.3 ([Release](https://github.com/OpenFairyGUI/OpenFairyGUI/releases/tag/v0.3.0-alpha.3))
+
+Features:
+
+- functions,cli: Report project geometry that is incompatible with the FairyGUI desktop editor's signed 32-bit integer range. [#99](https://github.com/OpenFairyGUI/OpenFairyGUI/pull/99)
+
+Fixes:
+
+- core: Truncate integer geometry fields toward zero in Project XML and reject non-finite or out-of-range values. [#98](https://github.com/OpenFairyGUI/OpenFairyGUI/pull/98)
+
+Other:
+
+- docs: Add the project logo, English documentation, and corrected API links. [#94](https://github.com/OpenFairyGUI/OpenFairyGUI/pull/94) [#95](https://github.com/OpenFairyGUI/OpenFairyGUI/pull/95)
+
+### v0.3.0-alpha.2 ([Release](https://github.com/OpenFairyGUI/OpenFairyGUI/releases/tag/v0.3.0-alpha.2))
+
+Features:
+
+- functions,cli: Add project validation with `valid`, `invalid`, and `incomplete` states, diagnostics, and JSON output. [#96](https://github.com/OpenFairyGUI/OpenFairyGUI/pull/96)
+
+### v0.3.0-alpha.1 ([Release](https://github.com/OpenFairyGUI/OpenFairyGUI/releases/tag/v0.3.0-alpha.1))
+
+Features:
+
+- mcp: Add `openfairygui_backend_get_project_outline` for compact, revision-bound project structure discovery without source bytes or full property payloads. [#93](https://github.com/OpenFairyGUI/OpenFairyGUI/pull/93)
+
+## v0.2.x
+
+Prerelease builds from `v0.2.0-alpha.0` through `v0.2.0-alpha.38` are consolidated into the stable release below.
+
+### v0.2.6 ([Release](https://github.com/OpenFairyGUI/OpenFairyGUI/releases/tag/v0.2.6))
+
+Features:
+
+- core: Model SWF resources, controller-page remarks, loader error signs, and component custom-extension IDs as formal Project XML, UAM, and binary properties. [#121](https://github.com/OpenFairyGUI/OpenFairyGUI/pull/121)
+
+Fixes:
+
+- core: Align button down effects, layout-dependent List defaults, Transition frame rates, property overrides, tile-grid metadata, trimmed sprite sizes, and remaining component XML fields with the editor and runtime protocols. [#121](https://github.com/OpenFairyGUI/OpenFairyGUI/pull/121)
+- functions: Enforce runtime-supported compression, resource filenames, Layabox atlas rotation, and Cocos Creator runtime imports. [#121](https://github.com/OpenFairyGUI/OpenFairyGUI/pull/121)
+- functions: Apply package exclusions, publish-clear projection, package-level atlas settings, selected-state resource closure, and Unity split-alpha output during publishing. [#121](https://github.com/OpenFairyGUI/OpenFairyGUI/pull/121)
+
+Other:
+
+- docs: Complete the bilingual release history, current version status, English integer-geometry protocol, and public package entrypoint guide, and make bilingual Changelog updates a release requirement. [#120](https://github.com/OpenFairyGUI/OpenFairyGUI/pull/120)
+- docs: Synchronize the architecture, editor-publish settings, and binary-package protocol documents with the corrected implementation. [#121](https://github.com/OpenFairyGUI/OpenFairyGUI/pull/121)
+
+### v0.2.5 ([Release](https://github.com/OpenFairyGUI/OpenFairyGUI/releases/tag/v0.2.5))
+
+Features:
+
+- core: Model controller `alias`, `autoRadioGroupDepth`, and `exported` as formal properties preserved through Project XML, UAM, and authoring APIs. [#117](https://github.com/OpenFairyGUI/OpenFairyGUI/pull/117)
+
+### v0.2.4 ([Release](https://github.com/OpenFairyGUI/OpenFairyGUI/releases/tag/v0.2.4))
+
+Features:
+
+- core,backend: Add the `setResourceFolderAtlas` transaction for updating a resource folder's source Atlas slot by canonical branch and path. [#115](https://github.com/OpenFairyGUI/OpenFairyGUI/pull/115)
+
+### v0.2.3 ([Release](https://github.com/OpenFairyGUI/OpenFairyGUI/releases/tag/v0.2.3))
+
+Features:
+
+- core: Complete UAM, Project XML, and binary round-trip contracts for Image, MovieClip, List, built-in component instances, and component authoring metadata. [#112](https://github.com/OpenFairyGUI/OpenFairyGUI/pull/112)
+- core,backend: Support Tree double-click expansion state transactions and tighten no-op transaction safety. [#113](https://github.com/OpenFairyGUI/OpenFairyGUI/pull/113)
+
+Other:
+
+- docs: Recommend FairyGUI Editor Online as an OpenFairyGUI application and clarify OpenFairyGUI's unofficial relationship to the FairyGUI brand. [#111](https://github.com/OpenFairyGUI/OpenFairyGUI/pull/111)
+
+### v0.2.2 ([Release](https://github.com/OpenFairyGUI/OpenFairyGUI/releases/tag/v0.2.2))
+
+Fixes:
+
+- cli,functions: Make `--project-type layabox` apply a safe Layabox publish profile instead of retaining incompatible Unity extensions and atlas rotation settings. [#103](https://github.com/OpenFairyGUI/OpenFairyGUI/pull/103)
+
+Other:
+
+- docs: Render Mermaid architecture diagrams on the VitePress website. [#100](https://github.com/OpenFairyGUI/OpenFairyGUI/pull/100)
+
+### v0.2.1 ([Release](https://github.com/OpenFairyGUI/OpenFairyGUI/releases/tag/v0.2.1))
+
+Fixes:
+
+- core: Truncate integer geometry fields toward zero in Project XML and reject non-finite or out-of-range values. [#98](https://github.com/OpenFairyGUI/OpenFairyGUI/pull/98)
+
+Other:
+
+- docs: Add the project logo, bilingual Changelogs, English documentation, and corrected API links. [#94](https://github.com/OpenFairyGUI/OpenFairyGUI/pull/94) [#95](https://github.com/OpenFairyGUI/OpenFairyGUI/pull/95)
+
+### v0.2.0 ([Release](https://github.com/OpenFairyGUI/OpenFairyGUI/releases/tag/v0.2.0))
+
+Breaking changes:
+
+- core,functions: Split runtime-neutral, Node.js, and Web APIs into explicit package entrypoints such as `/node`, `/web`, `/uam`, and `/project-io`.
+
+Features:
+
+- core: Add UAM project authoring with atomic package, component, resource, display-object, gear, controller, transition, and resource-folder transactions. [#14](https://github.com/OpenFairyGUI/OpenFairyGUI/pull/14) [#37](https://github.com/OpenFairyGUI/OpenFairyGUI/pull/37) [#45](https://github.com/OpenFairyGUI/OpenFairyGUI/pull/45) [#48](https://github.com/OpenFairyGUI/OpenFairyGUI/pull/48)
+- core: Add project settings, package publish settings, and package-local branch lifecycle transactions. [#75](https://github.com/OpenFairyGUI/OpenFairyGUI/pull/75) [#76](https://github.com/OpenFairyGUI/OpenFairyGUI/pull/76) [#77](https://github.com/OpenFairyGUI/OpenFairyGUI/pull/77)
+- functions: Add publish plugins and browser publishing with explicit support for persisted publish settings and SVG resources. [#2](https://github.com/OpenFairyGUI/OpenFairyGUI/pull/2) [#4](https://github.com/OpenFairyGUI/OpenFairyGUI/pull/4) [#78](https://github.com/OpenFairyGUI/OpenFairyGUI/pull/78) [#85](https://github.com/OpenFairyGUI/OpenFairyGUI/pull/85)
+- backend,mcp: Add stateful project sessions, revisions, save/materialization flows, capability discovery, CLI integration, and an MCP adapter.
+
+Fixes:
+
+- core: Preserve FairyGUI Project XML, component, transition, property override, and binary package semantics during round trips. [#10](https://github.com/OpenFairyGUI/OpenFairyGUI/pull/10) [#11](https://github.com/OpenFairyGUI/OpenFairyGUI/pull/11) [#13](https://github.com/OpenFairyGUI/OpenFairyGUI/pull/13) [#86](https://github.com/OpenFairyGUI/OpenFairyGUI/pull/86)
+- core,functions: Hydrate and publish MovieClip JTA metadata, dimensions, smoothing, frames, and texture tables safely. [#19](https://github.com/OpenFairyGUI/OpenFairyGUI/pull/19) [#71](https://github.com/OpenFairyGUI/OpenFairyGUI/pull/71) [#72](https://github.com/OpenFairyGUI/OpenFairyGUI/pull/72) [#73](https://github.com/OpenFairyGUI/OpenFairyGUI/pull/73)
+- core: Validate image resource replacement bytes before committing a transaction. [#61](https://github.com/OpenFairyGUI/OpenFairyGUI/pull/61)
+- backend: Preserve browser storage fidelity and recover abandoned session locks after refresh. [#88](https://github.com/OpenFairyGUI/OpenFairyGUI/pull/88) [#89](https://github.com/OpenFairyGUI/OpenFairyGUI/pull/89)
+
+Other:
+
+- Publish the documentation website at [fairygui.dev](https://fairygui.dev/) and add project funding metadata. [#42](https://github.com/OpenFairyGUI/OpenFairyGUI/pull/42) [#44](https://github.com/OpenFairyGUI/OpenFairyGUI/pull/44)
+- Publish the five public packages as stable `0.2.0` releases with deterministic version metadata and browser-safe package entrypoints. [#91](https://github.com/OpenFairyGUI/OpenFairyGUI/pull/91)
+
+## v0.1.x
+
+### v0.1.1 ([Release](https://github.com/OpenFairyGUI/OpenFairyGUI/releases/tag/v0.1.1))
+
+Features:
+
+- core: Improve published-project recovery with alignment properties, recoverable resource metadata, dotted resource names, and cross-package references.
+
+Other:
+
+- Stabilize the npm release workflow and workspace dependency publishing.
+
+### v0.1.0 ([Tag](https://github.com/OpenFairyGUI/OpenFairyGUI/tree/v0.1.0))
+
+Initial release with FairyGUI project and binary package I/O, document transforms, publishing, published-project recovery, and the `ofgui` CLI.

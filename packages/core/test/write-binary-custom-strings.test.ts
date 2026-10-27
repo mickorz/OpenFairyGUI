@@ -4,7 +4,8 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { getFixturePath, getFixtureProjectPath } from '@openfairygui/test-utils';
-import { Document, NodeIO, TransitionActionType } from '../src/index.js';
+import { Document, TransitionActionType } from '../src/index.js';
+import { NodeIO } from '../src/node.js';
 
 const NULL_STRING_INDEX = 0xfffe;
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -35,9 +36,7 @@ function readBlockOffsets(bytes: Uint8Array): number[] {
 	const offsets: number[] = [];
 	for (let i = 0; i < segCount; i++) {
 		offsets.push(
-			useShort === 1
-				? view.getUint16(state.pos + i * 2, false)
-				: view.getUint32(state.pos + i * 4, false),
+			useShort === 1 ? view.getUint16(state.pos + i * 2, false) : view.getUint32(state.pos + i * 4, false),
 		);
 	}
 
@@ -78,14 +77,30 @@ function readBlock5(bytes: Uint8Array, block5Offset: number): Array<{ index: num
 	return values;
 }
 
-function getComponentRawBinary(doc: Document, packageName: string, componentName: string): Uint8Array {
-	const pkg = doc.getRoot().listPackages().find((item) => item.getName() === packageName);
-	if (!pkg) throw new Error(`Package not found: ${packageName}`);
-	const comp = pkg.listResources().find((item) => item.propertyType === 'Component' && item.getName() === componentName);
-	if (!comp) throw new Error(`Component not found: ${componentName}`);
-	const raw = (comp.getExtras() as { _rawBinary?: { buffer: ArrayBufferLike; byteOffset: number; byteLength: number } })._rawBinary;
-	if (!raw) throw new Error(`Component raw binary missing: ${componentName}`);
-	return new Uint8Array(raw.buffer, raw.byteOffset, raw.byteLength);
+function getComponentRawBinary(bytes: Uint8Array, _packageName: string, componentName: string): Uint8Array {
+	const offsets = readBlockOffsets(bytes);
+	const strings = readStringTable(bytes, offsets[4]);
+	const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+	let pos = offsets[1];
+	const count = view.getUint16(pos, false);
+	pos += 2;
+	for (let i = 0; i < count; i++) {
+		const length = view.getInt32(pos, false);
+		pos += 4;
+		const end = pos + length;
+		const type = view.getUint8(pos++);
+		pos += 2;
+		const name = strings[view.getUint16(pos, false)];
+		pos += 2 + 4 + 1 + 8;
+		if (type === 3 && name === componentName) {
+			pos += 1;
+			const size = view.getInt32(pos, false);
+			pos += 4;
+			return bytes.subarray(pos, pos + size);
+		}
+		pos = end;
+	}
+	throw new Error('Component not found: ' + componentName);
 }
 
 function readStringIndex(view: DataView, state: { pos: number }): number {
@@ -271,11 +286,7 @@ function readTextInputBlock4(
 	throw new Error(`Text input child not found: ${childName}`);
 }
 
-function readChildRelationTargets(
-	raw: Uint8Array,
-	stringTable: string[],
-	childId: string,
-): number[] {
+function readChildRelationTargets(raw: Uint8Array, stringTable: string[], childId: string): number[] {
 	const view = new DataView(raw.buffer, raw.byteOffset, raw.byteLength);
 	const block2Offset = view.getUint32(2 + 4 * 2, false);
 	let pos = block2Offset;
@@ -512,8 +523,7 @@ test('binary writer: emits editor-aligned child object types for text input comp
 
 	try {
 		await io.writeBinary(doc, outPath, { compressed: false, packageIndex: 1 });
-		const written = await io.readBinary(outPath);
-		const raw = getComponentRawBinary(written, 'Basics', 'Demo_Text');
+		const raw = getComponentRawBinary(await fs.readFile(outPath), 'Basics', 'Demo_Text');
 		const view = new DataView(raw.buffer, raw.byteOffset, raw.byteLength);
 
 		const segCount = view.getUint8(0);
@@ -575,12 +585,98 @@ test('binary writer: emits version 7 list item property override placeholders', 
 
 	try {
 		await io.writeBinary(doc, outPath, { compressed: false, packageIndex: 1 });
-		const written = await io.readBinary(outPath);
-		const demoListRaw = getComponentRawBinary(written, 'Basics', 'Demo_List');
-		const demoGridRaw = getComponentRawBinary(written, 'Basics', 'Demo_Grid');
+		const demoListRaw = getComponentRawBinary(await fs.readFile(outPath), 'Basics', 'Demo_List');
+		const demoGridRaw = getComponentRawBinary(await fs.readFile(outPath), 'Basics', 'Demo_Grid');
 
 		t.deepEqual(readListItemLengths(demoListRaw, 0), [16, 16, 16, 16, 16, 16]);
 		t.deepEqual(readListItemLengths(demoGridRaw, 2), [16, 16, 16, 16]);
+	} finally {
+		await fs.rm(tmpDir, { recursive: true, force: true });
+	}
+});
+
+test('binary writer: preserves static list item controller overrides', async (t) => {
+	const doc = new Document();
+	doc.getRoot().setProjectId('proj-list-controllers').setProjectType(0).setVersion('3.0');
+
+	const pkg = doc.createPackage('ListControllerPkg');
+	pkg.setId('pkglist1');
+
+	const comp = doc.createComponent('Host');
+	comp.setId('host1');
+	comp.setPath('/');
+	comp.setSize(300, 200);
+
+	const list = doc.createGList('list');
+	list.setId('n0')
+		.setDefaultItem('ui://pkglist1item1')
+		.setListItems([
+			{
+				title: null,
+				icon: null,
+				url: null,
+				name: null,
+				selectedTitle: null,
+				selectedIcon: null,
+				level: 0,
+				isFolder: null,
+				controllers: 'bg,0,type,0',
+			},
+			{
+				title: null,
+				icon: null,
+				url: null,
+				name: null,
+				selectedTitle: null,
+				selectedIcon: null,
+				level: 0,
+				isFolder: null,
+				controllers: 'bg,1,type,1',
+			},
+			{
+				title: null,
+				icon: null,
+				url: null,
+				name: null,
+				selectedTitle: null,
+				selectedIcon: null,
+				level: 0,
+				isFolder: null,
+				controllers: 'bg,0,type,2',
+			},
+		]);
+	comp.addChild(list);
+	pkg.addResource(comp);
+
+	const item = doc.createComponent('Item');
+	item.setId('item1');
+	item.setPath('/');
+	item.setSize(100, 20);
+	pkg.addResource(item);
+
+	const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'openfairygui-list-controller-overrides-'));
+	const outPath = path.join(tmpDir, 'out.fui');
+
+	try {
+		await new NodeIO().writeBinary(doc, outPath, { compressed: false, version: 7 });
+		const written = await new NodeIO().readBinary(outPath);
+		const raw = getComponentRawBinary(await fs.readFile(outPath), 'ListControllerPkg', 'Host');
+		const writtenPackage = written
+			.getRoot()
+			.listPackages()
+			.find((candidate) => candidate.getName() === 'ListControllerPkg');
+		const writtenHost = writtenPackage?.listResources().find((resource) => resource.getName() === 'Host') as
+			| ReturnType<Document['createComponent']>
+			| undefined;
+		const writtenList = writtenHost?.listChildren().find((child) => child.getName() === 'list') as
+			| ReturnType<Document['createGList']>
+			| undefined;
+
+		t.deepEqual(readListItemLengths(raw, 0), [24, 24, 24]);
+		t.deepEqual(
+			writtenList?.getListItems().map((entry) => entry.controllers),
+			['bg,0,type,0', 'bg,1,type,1', 'bg,0,type,2'],
+		);
 	} finally {
 		await fs.rm(tmpDir, { recursive: true, force: true });
 	}
@@ -595,15 +691,14 @@ test('binary writer: matches Basics text child layouts from editor baseline', as
 
 	try {
 		await io.writeBinary(doc, outPath, { compressed: false, packageIndex: 1 });
-		const written = await io.readBinary(outPath);
 
-		t.deepEqual(readTextChildLayouts(getComponentRawBinary(written, 'Basics', 'Button')), [
+		t.deepEqual(readTextChildLayouts(getComponentRawBinary(await fs.readFile(outPath), 'Basics', 'Button')), [
 			{ type: 6, dataLen: 113, block5Len: 38 },
 		]);
-		t.deepEqual(readTextChildLayouts(getComponentRawBinary(written, 'Basics', 'Button10')), [
+		t.deepEqual(readTextChildLayouts(getComponentRawBinary(await fs.readFile(outPath), 'Basics', 'Button10')), [
 			{ type: 6, dataLen: 121, block5Len: 46 },
 		]);
-		t.deepEqual(readTextChildLayouts(getComponentRawBinary(written, 'Basics', 'Demo_Text')), [
+		t.deepEqual(readTextChildLayouts(getComponentRawBinary(await fs.readFile(outPath), 'Basics', 'Demo_Text')), [
 			{ type: 6, dataLen: 106, block5Len: 38 },
 			{ type: 6, dataLen: 106, block5Len: 38 },
 			{ type: 6, dataLen: 106, block5Len: 38 },
@@ -671,8 +766,7 @@ test('binary writer: exports only advanced groups and preserves child group ids'
 	try {
 		const io = new NodeIO();
 		await io.writeBinary(doc, outPath, { compressed: false, version: 7 });
-		const written = await io.readBinary(outPath);
-		const children = readChildSummaries(getComponentRawBinary(written, 'GroupPkg', 'Host'));
+		const children = readChildSummaries(getComponentRawBinary(await fs.readFile(outPath), 'GroupPkg', 'Host'));
 
 		t.deepEqual(children, [
 			{ type: 6, dataLen: 98, groupId: -1 },
@@ -722,8 +816,7 @@ test('binary writer: emits version 7 text and loader extension fields', async (t
 		const bytes = await fs.readFile(outPath);
 		t.is(readVersion(bytes), 7, 'binary header version is 7');
 
-		const written = await io.readBinary(outPath);
-		const raw = getComponentRawBinary(written, 'Version7Pkg', 'Host');
+		const raw = getComponentRawBinary(await fs.readFile(outPath), 'Version7Pkg', 'Host');
 		const view = new DataView(raw.buffer, raw.byteOffset, raw.byteLength);
 		const stringTable = readStringTable(bytes, readBlockOffsets(bytes)[4]);
 
@@ -832,8 +925,7 @@ test('binary writer: emits editor-aligned empty graph payloads', async (t) => {
 		const io = new NodeIO();
 		await io.writeBinary(doc, outPath, { compressed: false, version: 7 });
 
-		const written = await io.readBinary(outPath);
-		const raw = getComponentRawBinary(written, 'GraphPkg', 'Host');
+		const raw = getComponentRawBinary(await fs.readFile(outPath), 'GraphPkg', 'Host');
 		const view = new DataView(raw.buffer, raw.byteOffset, raw.byteLength);
 		const block2Offset = view.getUint32(2 + 4 * 2, false);
 		let pos = block2Offset + 2;
@@ -930,8 +1022,7 @@ test('binary writer: emits version 5 component and extension sound fields', asyn
 		t.is(readVersion(bytes), 5, 'binary header version is 5');
 
 		const stringTable = readStringTable(bytes, readBlockOffsets(bytes)[4]);
-		const written = await io.readBinary(outPath);
-		const raw = getComponentRawBinary(written, 'Version5Pkg', 'Host');
+		const raw = getComponentRawBinary(await fs.readFile(outPath), 'Version5Pkg', 'Host');
 		const view = new DataView(raw.buffer, raw.byteOffset, raw.byteLength);
 
 		const block4Offset = view.getUint32(2 + 4 * 4, false);
@@ -1057,8 +1148,7 @@ test('binary writer: emits combo box instance items with null icon placeholders'
 
 		const bytes = await fs.readFile(outPath);
 		const stringTable = readStringTable(bytes, readBlockOffsets(bytes)[4]);
-		const written = await io.readBinary(outPath);
-		const raw = getComponentRawBinary(written, 'ComboInstancePkg', 'Host');
+		const raw = getComponentRawBinary(await fs.readFile(outPath), 'ComboInstancePkg', 'Host');
 		const view = new DataView(raw.buffer, raw.byteOffset, raw.byteLength);
 
 		const block2Offset = view.getUint32(2 + 4 * 2, false);
@@ -1153,8 +1243,7 @@ test('binary writer: emits version 6 transition and gear animation names', async
 		t.is(readVersion(bytes), 6, 'binary header version is 6');
 
 		const stringTable = readStringTable(bytes, readBlockOffsets(bytes)[4]);
-		const written = await io.readBinary(outPath);
-		const raw = getComponentRawBinary(written, 'Version6Pkg', 'Host');
+		const raw = getComponentRawBinary(await fs.readFile(outPath), 'Version6Pkg', 'Host');
 		const view = new DataView(raw.buffer, raw.byteOffset, raw.byteLength);
 
 		const transitionBlockOffset = view.getUint32(2 + 4 * 5, false);
@@ -1309,8 +1398,7 @@ test('binary writer: emits version 4 transition and gear custom ease paths', asy
 		const bytes = await fs.readFile(outPath);
 		t.is(readVersion(bytes), 4, 'binary header version is 4');
 
-		const written = await io.readBinary(outPath);
-		const raw = getComponentRawBinary(written, 'Version4Pkg', 'Host');
+		const raw = getComponentRawBinary(await fs.readFile(outPath), 'Version4Pkg', 'Host');
 		const view = new DataView(raw.buffer, raw.byteOffset, raw.byteLength);
 
 		const transitionBlockOffset = view.getUint32(2 + 4 * 5, false);
@@ -1381,6 +1469,75 @@ test('binary writer: emits version 4 transition and gear custom ease paths', asy
 	}
 });
 
+test('binary writer: preserves zero alpha in GearLook status', async (t) => {
+	const doc = new Document();
+	doc.getRoot().setProjectId('proj-gear-look-zero').setProjectType(0).setVersion('3.0');
+
+	const pkg = doc.createPackage('GearLookZeroPkg');
+	pkg.setId('pkgzero');
+
+	const comp = doc.createComponent('Host');
+	comp.setId('comp001');
+	comp.setPath('/');
+	comp.setSize(320, 200);
+
+	const ctrl = doc.createController('state');
+	ctrl.setName('state');
+	comp.addController(ctrl);
+
+	const graph = doc.createGGraph('target');
+	graph.setId('n0');
+
+	const gear = doc.createGear('gearLook');
+	gear.setGearType(3);
+	gear.setController(ctrl);
+	gear.setPages('hidden');
+	gear.setValues('0,0,false,true');
+	gear.setDefaultValue('0,0,false,true');
+	graph.addGear(gear);
+
+	comp.addChild(graph);
+	pkg.addResource(comp);
+
+	const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'openfairygui-gear-look-zero-'));
+	const outPath = path.join(tmpDir, 'out.fui');
+
+	try {
+		const io = new NodeIO();
+		await io.writeBinary(doc, outPath, { compressed: false, version: 7 });
+
+		const raw = getComponentRawBinary(await fs.readFile(outPath), 'GearLookZeroPkg', 'Host');
+		const view = new DataView(raw.buffer, raw.byteOffset, raw.byteLength);
+
+		const block2Offset = view.getUint32(2 + 4 * 2, false);
+		let childPos = block2Offset;
+		t.is(view.getInt16(childPos, false), 1);
+		childPos += 2;
+
+		childPos += 2; // child data length
+		const encodedChildPos = childPos;
+		const childGearBlockOffset = view.getUint16(encodedChildPos + 2 + 2 * 2, false);
+		const gearState = { pos: encodedChildPos + childGearBlockOffset };
+
+		t.is(view.getInt16(gearState.pos, false), 1);
+		gearState.pos += 2;
+		gearState.pos += 2; // gear data length
+		t.is(view.getUint8(gearState.pos++), 3);
+		gearState.pos += 2; // controller index
+		t.is(view.getInt16(gearState.pos, false), 1);
+		gearState.pos += 2;
+
+		gearState.pos += 2; // page id
+		t.is(view.getFloat32(gearState.pos, false), 0, 'page status keeps alpha=0');
+		gearState.pos += 4 + 4 + 1 + 1;
+
+		t.true(view.getUint8(gearState.pos++) !== 0, 'gear has default status');
+		t.is(view.getFloat32(gearState.pos, false), 0, 'default status keeps alpha=0');
+	} finally {
+		await fs.rm(tmpDir, { recursive: true, force: true });
+	}
+});
+
 test('binary writer: emits version 7 gear xy percent footer', async (t) => {
 	const doc = new Document();
 	doc.getRoot().setProjectId('proj-v7-gearxy').setProjectType(0).setVersion('3.0');
@@ -1420,8 +1577,7 @@ test('binary writer: emits version 7 gear xy percent footer', async (t) => {
 		const io = new NodeIO();
 		await io.writeBinary(doc, outPath, { compressed: false, version: 7 });
 
-		const written = await io.readBinary(outPath);
-		const raw = getComponentRawBinary(written, 'Version7GearPkg', 'Host');
+		const raw = getComponentRawBinary(await fs.readFile(outPath), 'Version7GearPkg', 'Host');
 		const view = new DataView(raw.buffer, raw.byteOffset, raw.byteLength);
 
 		const block2Offset = view.getUint32(2 + 4 * 2, false);
@@ -1467,7 +1623,10 @@ test('binary writer: emits version 7 gear xy percent footer', async (t) => {
 test('binary writer: emits null scrollpane ptrRes slots for missing header/footer', async (t) => {
 	const io = new NodeIO();
 	const doc = await io.readProject(PROJECT_PATH);
-	const pkgIndex = doc.getRoot().listPackages().findIndex((item) => item.getName() === 'PullToRefresh');
+	const pkgIndex = doc
+		.getRoot()
+		.listPackages()
+		.findIndex((item) => item.getName() === 'PullToRefresh');
 	t.true(pkgIndex >= 0, 'PullToRefresh package exists');
 
 	const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'openfairygui-scrollpane-ptrres-'));
@@ -1480,8 +1639,7 @@ test('binary writer: emits null scrollpane ptrRes slots for missing header/foote
 		const binaryBytes = new Uint8Array(bytes.buffer, bytes.byteOffset, bytes.byteLength);
 		const stringTable = readStringTable(binaryBytes, readBlockOffsets(binaryBytes)[4]);
 
-		const written = await io.readBinary(outPath);
-		const raw = getComponentRawBinary(written, 'PullToRefresh', 'Main');
+		const raw = getComponentRawBinary(await fs.readFile(outPath), 'PullToRefresh', 'Main');
 
 		const list1 = readListScrollPaneResourceIndexes(raw, stringTable, 'list1');
 		t.is(stringTable[list1.headerIndex], 'ui://3u9795n0n3qdr');
@@ -1498,7 +1656,10 @@ test('binary writer: emits null scrollpane ptrRes slots for missing header/foote
 test('binary writer: emits null restrict for Basics text input when unset', async (t) => {
 	const io = new NodeIO();
 	const doc = await io.readProject(PROJECT_PATH);
-	const pkgIndex = doc.getRoot().listPackages().findIndex((item) => item.getName() === 'Basics');
+	const pkgIndex = doc
+		.getRoot()
+		.listPackages()
+		.findIndex((item) => item.getName() === 'Basics');
 	t.true(pkgIndex >= 0, 'Basics package exists');
 
 	const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'openfairygui-textinput-restrict-'));
@@ -1511,8 +1672,7 @@ test('binary writer: emits null restrict for Basics text input when unset', asyn
 		const binaryBytes = new Uint8Array(bytes.buffer, bytes.byteOffset, bytes.byteLength);
 		const stringTable = readStringTable(binaryBytes, readBlockOffsets(binaryBytes)[4]);
 
-		const written = await io.readBinary(outPath);
-		const raw = getComponentRawBinary(written, 'Basics', 'Demo_Text');
+		const raw = getComponentRawBinary(await fs.readFile(outPath), 'Basics', 'Demo_Text');
 		const input = readTextInputBlock4(raw, stringTable, 'n22');
 
 		t.is(stringTable[input.promptIndex], '[i][color=#999999]Your Name Here[/color][/i]');
@@ -1554,8 +1714,7 @@ test('binary writer: converts transition frame time and duration using fps', asy
 	try {
 		const io = new NodeIO();
 		await io.writeBinary(doc, outPath, { compressed: false, version: 2, packageIndex: 0 });
-		const written = await io.readBinary(outPath);
-		const raw = getComponentRawBinary(written, 'TransitionFps', 'Main');
+		const raw = getComponentRawBinary(await fs.readFile(outPath), 'TransitionFps', 'Main');
 		const view = new DataView(raw.buffer, raw.byteOffset, raw.byteLength);
 
 		const transitionBlockOffset = view.getUint32(2 + 4 * 5, false);
@@ -1589,7 +1748,10 @@ test('binary writer: converts transition frame time and duration using fps', asy
 test('binary writer: maps relation targets from child ids to display-list indexes', async (t) => {
 	const io = new NodeIO();
 	const doc = await io.readProject(PROJECT_PATH);
-	const pkgIndex = doc.getRoot().listPackages().findIndex((item) => item.getName() === 'Emoji');
+	const pkgIndex = doc
+		.getRoot()
+		.listPackages()
+		.findIndex((item) => item.getName() === 'Emoji');
 	t.true(pkgIndex >= 0, 'Emoji package exists');
 
 	const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'openfairygui-emoji-relations-'));
@@ -1601,15 +1763,13 @@ test('binary writer: maps relation targets from child ids to display-list indexe
 		const binaryBytes = new Uint8Array(bytes.buffer, bytes.byteOffset, bytes.byteLength);
 		const stringTable = readStringTable(binaryBytes, readBlockOffsets(binaryBytes)[4]);
 
-		const written = await io.readBinary(outPath);
-
-		const chatLeftRaw = getComponentRawBinary(written, 'Emoji', 'chatLeft');
+		const chatLeftRaw = getComponentRawBinary(await fs.readFile(outPath), 'Emoji', 'chatLeft');
 		t.deepEqual(
 			readChildRelationTargets(chatLeftRaw, stringTable, 'n0'),
 			[3],
 			'chatLeft child n0 should target sibling index 3 (msg)',
 		);
-		const chatRightRaw = getComponentRawBinary(written, 'Emoji', 'chatRight');
+		const chatRightRaw = getComponentRawBinary(await fs.readFile(outPath), 'Emoji', 'chatRight');
 		t.deepEqual(
 			readChildRelationTargets(chatRightRaw, stringTable, 'n9'),
 			[3, -1],
@@ -1628,7 +1788,10 @@ test('binary writer: maps relation targets from child ids to display-list indexe
 test('binary writer: matches Transition component raw lengths from editor baseline', async (t) => {
 	const io = new NodeIO();
 	const doc = await io.readProject(PROJECT_PATH);
-	const pkgIndex = doc.getRoot().listPackages().findIndex((item) => item.getName() === 'Transition');
+	const pkgIndex = doc
+		.getRoot()
+		.listPackages()
+		.findIndex((item) => item.getName() === 'Transition');
 	t.true(pkgIndex >= 0, 'Transition package exists');
 
 	const tmpDir = await fs.mkdtemp(path.join(os.tmpdir(), 'openfairygui-transition-raw-'));
@@ -1638,9 +1801,11 @@ test('binary writer: matches Transition component raw lengths from editor baseli
 		await io.writeBinary(doc, outPath, { compressed: false, version: 2, packageIndex: pkgIndex });
 
 		const actualBytes = new Uint8Array(await fs.readFile(outPath));
-		const expectedBytes = new Uint8Array(await fs.readFile(
-			getFixturePath('FairyGUI-unity', 'Assets', 'Examples', 'Resources', 'UI', 'Transition_fui.bytes'),
-		));
+		const expectedBytes = new Uint8Array(
+			await fs.readFile(
+				getFixturePath('FairyGUI-unity', 'Assets', 'Examples', 'Resources', 'UI', 'Transition_fui.bytes'),
+			),
+		);
 
 		const actualMap = new Map(readComponentRawLengths(actualBytes).map((item) => [item.id, item]));
 		const expectedMap = new Map(readComponentRawLengths(expectedBytes).map((item) => [item.id, item]));
